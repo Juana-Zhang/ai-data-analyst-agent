@@ -192,6 +192,14 @@ SUPPORTED_TOPICS = [
     "raw data preview",
 ]
 
+DEFAULT_SUGGESTED_QUESTIONS = [
+    "What is the overall cancellation rate?",
+    "Which cities have the highest cancellation risk?",
+    "How do platforms compare on cancellation rate and ADR?",
+    "Does booking lead time relate to cancellation risk?",
+    "Which booking segments look highest risk?",
+]
+
 SUPERVISOR_MODES = [
     "Deterministic supervisor",
     "Gemini supervisor (optional)",
@@ -249,21 +257,50 @@ def workflow_metadata() -> list[dict[str, str]]:
 
 
 def deterministic_supervisor(question: str) -> dict[str, str | float]:
+    text = question.lower()
     query_key = choose_query_key(question)
-    if query_key == "unsupported":
+    if query_key != "unsupported":
+        workflow = QUERY_LIBRARY[query_key]
         return {
-            "query_key": "unsupported",
+            "action": "run_workflow",
+            "query_key": query_key,
             "supervisor": "Deterministic supervisor",
-            "confidence": 0.35,
-            "reasoning": "The question did not match the current workflow library with enough confidence.",
+            "confidence": 0.75,
+            "reasoning": f"Matched the question to the trusted workflow: {workflow['title']}.",
+            "user_message": f"I selected the {workflow['title']} workflow because it can answer this question with SQL-backed evidence.",
+            "suggested_questions": [],
         }
 
-    workflow = QUERY_LIBRARY[query_key]
+    if any(word in text for word in ["age", "income", "gender", "salary", "customer demographic"]):
+        return {
+            "action": "unsupported",
+            "query_key": "unsupported",
+            "supervisor": "Deterministic supervisor",
+            "confidence": 0.8,
+            "reasoning": "The question requires fields that are not available in the current dataset.",
+            "user_message": "I cannot answer this from the current dataset because the required demographic fields are not available.",
+            "suggested_questions": DEFAULT_SUGGESTED_QUESTIONS,
+        }
+
+    if any(phrase in text for phrase in ["don't know", "do not know", "how to analyze", "where should i start", "start", "what should i look", "usually analyze", "normally analyze", "analysis ideas"]):
+        return {
+            "action": "suggest_analysis_plan",
+            "query_key": "unsupported",
+            "supervisor": "Deterministic supervisor",
+            "confidence": 0.85,
+            "reasoning": "The user is asking for guidance on how to begin analyzing the dataset.",
+            "user_message": "A good starting point is to first establish the cancellation baseline, then compare risk by city, platform, lead time, and high-risk booking segments.",
+            "suggested_questions": DEFAULT_SUGGESTED_QUESTIONS,
+        }
+
     return {
-        "query_key": query_key,
+        "action": "ask_clarification",
+        "query_key": "unsupported",
         "supervisor": "Deterministic supervisor",
-        "confidence": 0.75,
-        "reasoning": f"Matched the question to the trusted workflow: {workflow['title']}.",
+        "confidence": 0.65,
+        "reasoning": "The question is broad, so the app should guide the user toward a concrete analysis direction.",
+        "user_message": "I can help, but I need a clearer business direction. For this dataset, you can explore cancellations, city risk, platform performance, payment model, ADR, lead time, or high-risk segments.",
+        "suggested_questions": DEFAULT_SUGGESTED_QUESTIONS,
     }
 
 
@@ -297,16 +334,20 @@ Product context:
 - The goal is to answer data questions only through trusted, reproducible workflows.
 - The LLM is not allowed to write arbitrary SQL or invent data.
 - DuckDB will execute the selected workflow's predefined SQL.
+- The LLM should help users frame better analytical questions when their request is vague.
 
 Your task:
-Choose exactly one workflow_key from the workflow library for the user question.
+Decide the next best action for the user question.
 
 Decision rules:
-1. Select the most relevant workflow if the question can be answered by an existing workflow.
-2. Choose "unsupported" if the question is too broad, asks for advice without a clear analysis target, or requires fields/workflows not listed.
-3. Do not create new workflow keys.
-4. Do not answer the business question directly.
-5. Keep the reasoning short and explain why the workflow was selected or why the request is unsupported.
+1. Use action "run_workflow" when the question maps clearly to one existing workflow.
+2. Use action "suggest_analysis_plan" when the user asks how to analyze the data, where to start, what analysts usually check, or asks for analysis ideas.
+3. Use action "ask_clarification" when the user asks for broad business advice but does not specify whether they care about cancellations, pricing, platforms, lead time, or risky segments.
+4. Use action "unsupported" only when the question cannot be answered from the current dataset or asks for fields/workflows not available.
+5. Do not create new workflow keys.
+6. Do not write SQL.
+7. Do not invent data or findings.
+8. If action is not "run_workflow", set query_key to "unsupported" and provide helpful suggested questions.
 
 Workflow library:
 {metadata}
@@ -318,9 +359,12 @@ Return only valid JSON. Do not include markdown, comments, or extra text.
 
 JSON schema:
 {{
-  "query_key": "one workflow_key from the library, or unsupported",
+  "action": "run_workflow | suggest_analysis_plan | ask_clarification | unsupported",
+  "query_key": "one workflow_key from the library if action is run_workflow, otherwise unsupported",
   "confidence": 0.0,
-  "reasoning": "one short plain-English sentence"
+  "reasoning": "one short plain-English sentence",
+  "user_message": "a helpful message to show the user",
+  "suggested_questions": ["3 to 5 concrete questions the user could ask next"]
 }}
 """
 
@@ -349,14 +393,29 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         model_name = get_gemini_model()
         response = client.models.generate_content(model=model_name, contents=prompt)
         decision = extract_json_object(response.text)
+        action = decision.get("action", "ask_clarification")
+        if action not in {"run_workflow", "suggest_analysis_plan", "ask_clarification", "unsupported"}:
+            action = "ask_clarification"
+
         query_key = decision.get("query_key", "unsupported")
-        if query_key not in QUERY_LIBRARY and query_key != "unsupported":
+        if action != "run_workflow":
             query_key = "unsupported"
+        elif query_key not in QUERY_LIBRARY:
+            query_key = "unsupported"
+            action = "ask_clarification"
+
+        suggested_questions = decision.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS)
+        if not isinstance(suggested_questions, list) or not suggested_questions:
+            suggested_questions = DEFAULT_SUGGESTED_QUESTIONS
+
         return {
+            "action": action,
             "query_key": query_key,
             "supervisor": f"Gemini supervisor ({model_name})",
             "confidence": float(decision.get("confidence", 0.5)),
             "reasoning": str(decision.get("reasoning", "Gemini selected this workflow.")),
+            "user_message": str(decision.get("user_message", "")),
+            "suggested_questions": [str(item) for item in suggested_questions[:5]],
         }
     except Exception as exc:
         fallback = deterministic_supervisor(question)
@@ -592,21 +651,33 @@ def build_data_context(query_key: str) -> dict:
 
 
 def create_report_package(question: str, decision: dict[str, str | float]) -> dict:
+    action = str(decision.get("action", "run_workflow"))
     query_key = str(decision["query_key"])
-    if query_key == "unsupported":
+    if action != "run_workflow" or query_key == "unsupported":
+        titles = {
+            "suggest_analysis_plan": "Suggested Analysis Plan",
+            "ask_clarification": "Clarification Needed",
+            "unsupported": "Unsupported Question",
+        }
+        descriptions = {
+            "suggest_analysis_plan": "The user asked for analysis guidance, so the supervisor suggested useful starting questions.",
+            "ask_clarification": "The user request is broad, so the supervisor suggested clearer analytical directions.",
+            "unsupported": "The question cannot be answered from the current dataset or workflow coverage.",
+        }
         return {
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "question": question,
             "decision": decision,
             "query_key": query_key,
-            "workflow_title": "Unsupported question",
-            "workflow_description": "The question could not be mapped to a supported workflow.",
+            "workflow_title": titles.get(action, "Clarification Needed"),
+            "workflow_description": descriptions.get(action, "The supervisor did not run a SQL workflow."),
             "sql": "",
             "result": pd.DataFrame(),
-            "interpretation": "No analysis was run because the question is outside the current workflow coverage.",
+            "interpretation": str(decision.get("user_message") or "No SQL workflow was run for this request."),
             "data_context": build_data_context(query_key),
             "limitations": build_limitations(query_key),
             "next_steps": build_next_steps(query_key),
+            "suggested_questions": decision.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS),
         }
 
     query = QUERY_LIBRARY[query_key]
@@ -624,6 +695,7 @@ def create_report_package(question: str, decision: dict[str, str | float]) -> di
         "data_context": build_data_context(query_key),
         "limitations": build_limitations(query_key),
         "next_steps": build_next_steps(query_key),
+        "suggested_questions": decision.get("suggested_questions", []),
     }
 
 
@@ -636,6 +708,9 @@ def build_report_html(report: dict) -> str:
     )
     limitations_html = "".join(f"<li>{html.escape(item)}</li>" for item in report["limitations"])
     next_steps_html = "".join(f"<li>{html.escape(item)}</li>" for item in report["next_steps"])
+    suggested_questions_html = "".join(
+        f"<li>{html.escape(str(item))}</li>" for item in report.get("suggested_questions", [])
+    )
     context = report["data_context"]
     fields_used = context["fields_used"] or ["No workflow fields were selected."]
     fields_used_html = "".join(f"<li>{html.escape(str(item))}</li>" for item in fields_used)
@@ -735,6 +810,9 @@ def build_report_html(report: dict) -> str:
 
   <h2>Recommended Next Steps</h2>
   <ul>{next_steps_html}</ul>
+
+  <h2>Suggested Questions</h2>
+  <ul>{suggested_questions_html or "<li>No suggested questions were generated.</li>"}</ul>
 </body>
 </html>
 """
@@ -751,17 +829,27 @@ def render_download_button(report: dict, key: str) -> None:
     )
 
 
+def is_downloadable_report(report: dict) -> bool:
+    result = report.get("result")
+    return (
+        report["decision"].get("action", "run_workflow") == "run_workflow"
+        and bool(report.get("sql"))
+        and isinstance(result, pd.DataFrame)
+        and not result.empty
+    )
+
+
 def render_report(report: dict) -> None:
     query_key = report["query_key"]
     result = report["result"]
 
-    if query_key == "unsupported":
-        st.warning(
-            "I could not confidently map this question to an existing analysis workflow. "
-            "Please try one of the supported topics below."
-        )
-        st.write(", ".join(SUPPORTED_TOPICS))
+    if report["decision"].get("action", "run_workflow") != "run_workflow" or query_key == "unsupported":
         st.info(report["interpretation"])
+        suggestions = report.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS)
+        if suggestions:
+            st.write("Suggested questions to try next:")
+            for item in suggestions:
+                st.write(f"- {item}")
         return
 
     st.caption(report["workflow_description"])
@@ -838,14 +926,25 @@ if "latest_report" not in st.session_state:
 
 with st.sidebar:
     st.header("Workbench")
-    st.write("Data source: `data.csv`")
+    st.subheader("Data Source")
+    data_source_mode = st.radio("Source mode", ["Local CSV demo", "Company database preview"])
+    if data_source_mode == "Local CSV demo":
+        st.write("Data source: `data.csv`")
+        st.caption("Domain: hotel booking records")
+    else:
+        st.write("Status: preview only")
+        st.caption("Future connectors: PostgreSQL, Snowflake, BigQuery, Redshift")
+
+    st.divider()
+    st.subheader("Supervisor")
     supervisor_mode = st.radio("Supervisor mode", SUPERVISOR_MODES)
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
         decision = supervisor_decision(selected_question, supervisor_mode)
         report = create_report_package(selected_question, decision)
-        st.session_state.latest_report = report
+        if is_downloadable_report(report):
+            st.session_state.latest_report = report
         st.session_state.messages.append({"role": "user", "content": selected_question})
         st.session_state.messages.append(
             {
@@ -858,8 +957,18 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Supervisor Layer")
-    st.write("The supervisor chooses one trusted workflow before DuckDB runs any SQL.")
-    st.write("Gemini is optional. Without a configured key, the app falls back safely to local routing.")
+    st.write("The supervisor decides whether to run a trusted workflow, suggest an analysis plan, or ask for clarification.")
+    st.write("Gemini is optional. Without a configured key, the app falls back safely to local guidance and routing.")
+
+    st.divider()
+    st.subheader("Integration Preview")
+    integration_mode = st.radio("Interface", ["Streamlit UI", "API endpoint", "Slack / Teams"])
+    if integration_mode == "Streamlit UI":
+        st.caption("Current demo interface for interactive analysis.")
+    elif integration_mode == "API endpoint":
+        st.caption("Future pattern: POST /analyze for internal apps and BI portals.")
+    else:
+        st.caption("Future pattern: ask questions from Slack or Teams and receive report links.")
 
 overview_tab, profile_tab, library_tab, report_tab = st.tabs(
     ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"]
@@ -870,37 +979,34 @@ with overview_tab:
         with st.chat_message(message["role"]):
             if message["role"] == "user":
                 st.write(message["content"])
-            elif message.get("query_key") == "unsupported":
-                decision = message.get("decision")
-                report = message.get("report")
-                if decision:
-                    st.write(f"Supervisor: **{decision['supervisor']}**")
-                    st.caption(f"Confidence: {decision['confidence']}")
-                    st.write(decision["reasoning"])
-                if report:
-                    render_report(report)
             else:
                 decision = message.get("decision")
                 report = message.get("report")
                 if decision:
                     st.write(f"Supervisor: **{decision['supervisor']}**")
                     st.caption(f"Confidence: {decision['confidence']}")
+                    st.caption(f"Action: {decision.get('action', 'run_workflow')}")
                     st.write(decision["reasoning"])
                 if not report:
                     report = create_report_package(message.get("content", ""), decision)
                     message["report"] = report
-                st.write(f"Selected analysis: **{report['workflow_title']}**")
-                with st.expander("SQL used"):
-                    st.code(report["sql"], language="sql")
+                if decision.get("action", "run_workflow") == "run_workflow":
+                    st.write(f"Selected analysis: **{report['workflow_title']}**")
+                    with st.expander("SQL used"):
+                        st.code(report["sql"], language="sql")
+                else:
+                    st.write(f"Supervisor guidance: **{report['workflow_title']}**")
                 render_report(report)
-                render_download_button(report, key=f"download_{id(message)}")
+                if is_downloadable_report(report):
+                    render_download_button(report, key=f"download_{id(message)}")
 
     prompt = st.chat_input("Ask your data...", key="week2_prompt")
 
     if prompt:
         decision = supervisor_decision(prompt, supervisor_mode)
         report = create_report_package(prompt, decision)
-        st.session_state.latest_report = report
+        if is_downloadable_report(report):
+            st.session_state.latest_report = report
 
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.messages.append(
@@ -938,7 +1044,7 @@ with library_tab:
     st.subheader("Unsupported Question Behavior")
     st.write(
         "If a stakeholder asks a question outside the current workflow library, the app explains "
-        "the limitation and suggests supported topics instead of forcing an unreliable answer."
+        "the limitation or guides the user toward concrete analysis questions instead of forcing an unreliable answer."
     )
 
 with report_tab:

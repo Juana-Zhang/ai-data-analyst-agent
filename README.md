@@ -2,7 +2,7 @@
 
 A SQL-grounded AI analyst workbench for non-technical stakeholders.
 
-This project lets users ask business questions in natural language, routes those questions to trusted analysis workflows, runs reproducible DuckDB queries on a local hotel booking dataset, and returns KPI summaries, charts, business interpretations, and downloadable HTML reports.
+This project lets users ask business questions in natural language, routes clear questions to trusted analysis workflows, runs reproducible DuckDB queries on a local hotel booking dataset, and returns KPI summaries, charts, business interpretations, and downloadable HTML reports for completed analyses.
 
 ## Why This Project
 
@@ -21,19 +21,21 @@ The LLM does not directly invent data. It only helps select from supported workf
 
 - Streamlit front end for non-technical users
 - DuckDB local analytics engine
-- Gemini supervisor mode for workflow selection
+- Gemini supervisor mode for workflow selection, analysis guidance, and clarification
 - Deterministic supervisor fallback when Gemini is unavailable
 - Trusted SQL workflow library
 - Transparent SQL for every result
 - KPI cards, tables, and quick charts
 - Dataset schema and data quality checks
 - Unsupported question handling
+- Guidance for users who do not know where to start
 - One-click downloadable HTML executive report
 - Data context and field lineage in each report
+- Enterprise integration preview for database, API, and Slack/Teams patterns
 
 ## Report Contents
 
-Each downloaded report includes:
+Each downloaded report is generated only after a SQL workflow runs. It includes:
 
 - user question
 - supervisor decision
@@ -120,6 +122,16 @@ python -m streamlit run app.py
 ## Portfolio Positioning
 
 This is not a universal data chatbot. It is a configurable, SQL-grounded analyst workbench. The current demo uses a hotel booking dataset, but the architecture can support other business domains by replacing the workflow library and metadata layer.
+
+## Integration Preview
+
+The current app runs as a Streamlit prototype on a local CSV file. The sidebar includes an integration preview showing how the same design could later connect to:
+
+- company databases such as PostgreSQL, Snowflake, BigQuery, or Redshift
+- an API endpoint such as `POST /analyze`
+- Slack or Teams assistant workflows
+
+These integrations are shown as product and architecture previews only. The public demo does not connect to private company systems.
 
 ## Limitations
 
