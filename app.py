@@ -288,6 +288,43 @@ def extract_json_object(text: str) -> dict:
     return json.loads(match.group(0))
 
 
+def build_supervisor_prompt(question: str, metadata: str) -> str:
+    return f"""
+You are the supervisor agent inside a SQL-grounded AI Data Analyst Workbench.
+
+Product context:
+- The app is built for non-technical business stakeholders.
+- The goal is to answer data questions only through trusted, reproducible workflows.
+- The LLM is not allowed to write arbitrary SQL or invent data.
+- DuckDB will execute the selected workflow's predefined SQL.
+
+Your task:
+Choose exactly one workflow_key from the workflow library for the user question.
+
+Decision rules:
+1. Select the most relevant workflow if the question can be answered by an existing workflow.
+2. Choose "unsupported" if the question is too broad, asks for advice without a clear analysis target, or requires fields/workflows not listed.
+3. Do not create new workflow keys.
+4. Do not answer the business question directly.
+5. Keep the reasoning short and explain why the workflow was selected or why the request is unsupported.
+
+Workflow library:
+{metadata}
+
+User question:
+{question}
+
+Return only valid JSON. Do not include markdown, comments, or extra text.
+
+JSON schema:
+{{
+  "query_key": "one workflow_key from the library, or unsupported",
+  "confidence": 0.0,
+  "reasoning": "one short plain-English sentence"
+}}
+"""
+
+
 def gemini_supervisor(question: str) -> dict[str, str | float]:
     api_key = get_gemini_api_key()
     if not api_key:
@@ -305,26 +342,7 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         return fallback
 
     metadata = json.dumps(workflow_metadata(), indent=2)
-    prompt = f"""
-You are a supervisor agent for a SQL-grounded analyst workbench.
-
-Your task is to choose exactly one workflow for the user question.
-You must only choose from the provided workflow library.
-If the question is outside the current coverage, choose "unsupported".
-
-Workflow library:
-{metadata}
-
-User question:
-{question}
-
-Return only valid JSON in this shape:
-{{
-  "query_key": "one workflow_key from the library",
-  "confidence": 0.0,
-  "reasoning": "one short plain-English sentence"
-}}
-"""
+    prompt = build_supervisor_prompt(question, metadata)
 
     try:
         client = genai.Client(api_key=api_key)

@@ -66,6 +66,12 @@ Each downloaded report includes:
 - Pandas
 - Gemini API via `google-genai`
 
+## Project Docs
+
+- [Architecture](ARCHITECTURE.md)
+- [Prompt Design](PROMPT_DESIGN.md)
+- [Demo Script](DEMO_SCRIPT.md)
+
 ## Setup
 
 Install dependencies:
