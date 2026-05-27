@@ -1,1 +1,7 @@
 data.csv
+.DS_Store
+__pycache__/
+*.pyc
+.streamlit/secrets.toml*
+!.streamlit/secrets.toml.example
+.env
