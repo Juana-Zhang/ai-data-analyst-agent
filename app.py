@@ -1131,7 +1131,12 @@ st.title("AI Data Analyst Workbench (Prototype)")
 st.caption("A local DuckDB-powered analysis workflow for non-technical stakeholders.")
 st.markdown(
     "Built by **Nuonan (Juana) Zhang** · "
-    "[LinkedIn](https://www.linkedin.com/in/juanazhang/)"
+    "[www.linkedin.com/in/juanazhang](https://www.linkedin.com/in/juanazhang/)"
+)
+st.info(
+    "How to use this demo: choose Gemini or deterministic supervisor in the sidebar, "
+    "ask a business question in the chat box, review the selected workflow and SQL evidence, "
+    "then download an HTML report when a trusted analysis runs."
 )
 
 if not DATA_PATH.exists():
