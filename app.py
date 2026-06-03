@@ -1130,8 +1130,9 @@ st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
 st.title("AI Data Analyst Workbench (Prototype)")
 st.caption("A local DuckDB-powered analysis workflow for non-technical stakeholders.")
 st.markdown(
-    "Built by **Nuonan (Juana) Zhang** · "
-    "[www.linkedin.com/in/juanazhang](https://www.linkedin.com/in/juanazhang/)"
+    "**Built by Nuonan (Juana) Zhang**  \n"
+    "LinkedIn: [www.linkedin.com/in/juanazhang](https://www.linkedin.com/in/juanazhang/)  \n"
+    "GitHub: [github.com/Juana-Zhang/ai-data-analyst-agent](https://github.com/Juana-Zhang/ai-data-analyst-agent)"
 )
 st.info(
     "How to use this demo: choose Gemini or deterministic supervisor in the sidebar, "
