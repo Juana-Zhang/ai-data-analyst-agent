@@ -1,13 +1,13 @@
 # Prompt Design
 
-This project uses the LLM as an analysis supervisor and result interpreter, not as a free-form SQL generator.
+This project uses the LLM as a Guided AI routing layer and result interpreter, not as a free-form SQL generator.
 
 The prompt is designed to make the model decide the next best analytical action. If a question is specific, the model chooses from a trusted workflow library. If a user does not know where to start, the model suggests useful analysis directions. DuckDB performs the actual computation using predefined SQL. This keeps the app helpful, reproducible, inspectable, and safer for business users.
 
-## Core Supervisor Prompt
+## Core Guided AI Routing Prompt
 
 ```text
-You are the supervisor agent inside a SQL-grounded AI Data Analyst Workbench.
+You are the routing agent inside a SQL-grounded AI Data Analyst Workbench.
 
 Product context:
 - The app is built for non-technical business stakeholders.
@@ -22,12 +22,12 @@ Decide the next best action for the user question.
 Decision rules:
 1. Use action "run_workflow" when the question maps clearly to one existing workflow.
 2. Use action "suggest_analysis_plan" when the user asks how to analyze the data, where to start, what analysts usually check, or asks for analysis ideas.
-3. Use action "ask_clarification" when the user asks for broad business advice but does not specify whether they care about cancellations, pricing, platforms, lead time, or risky segments.
+3. Use action "ask_clarification" when the user asks for broad business advice but does not specify a measurable analysis target.
 4. Use action "propose_new_analysis" when the user asks for a reasonable analysis that is not in the workflow library but appears feasible from the available columns.
 5. Use action "unsupported" only when the question cannot be answered from the current dataset or asks for fields/workflows not available.
 6. Do not create new workflow keys.
 7. Do not execute or claim results for proposed analyses.
-8. For propose_new_analysis, provide a draft SQL query using only read_csv_auto('data.csv') and available columns. This SQL is for review only and will not be executed automatically.
+8. For propose_new_analysis, provide a draft SQL query using only the configured data source and available columns. This SQL is for review only and will not be executed automatically.
 9. Do not invent data or findings.
 10. If action is not "run_workflow", set query_key to "unsupported" and provide helpful suggested questions or a proposed analysis.
 
@@ -53,7 +53,7 @@ JSON schema:
   "proposed_analysis": {
     "title": "short title for the proposed analysis",
     "required_columns": ["columns needed for the proposed analysis"],
-    "draft_sql": "read-only draft SQL using read_csv_auto('data.csv')",
+    "draft_sql": "read-only draft SQL using the configured data source",
     "status": "Proposed only. Not executed automatically."
   }
 }
@@ -83,14 +83,18 @@ The prompt has three main constraints:
 
    The model can propose a new analysis when the fields exist, but the app does not execute draft SQL automatically.
 
-## Example Input
+## Sample Domain Examples
+
+The examples below use the public demo's sample domain. In another business domain, the workflow keys, metric names, and suggested questions would be replaced with that domain's schema and metric framework.
+
+## Run Workflow Example
 
 ```text
 User question:
 Can you tell me the overall cancellation rate?
 ```
 
-Expected supervisor output:
+Expected routing output:
 
 ```json
 {
@@ -110,7 +114,7 @@ User question:
 I don't know how to analyze this dataset. Where should I start?
 ```
 
-Expected supervisor output:
+Expected routing output:
 
 ```json
 {
@@ -136,33 +140,7 @@ User question:
 Are younger customers more likely to cancel?
 ```
 
-## Proposed New Analysis Example
-
-```text
-User question:
-How does cancellation vary by accommodation type?
-```
-
-Expected supervisor output:
-
-```json
-{
-  "action": "propose_new_analysis",
-  "query_key": "unsupported",
-  "confidence": 0.82,
-  "reasoning": "The question is feasible using available fields but is not covered by the current trusted workflow library.",
-  "user_message": "This analysis is not in the current workflow library, but I can propose a draft analysis using accommodation type, cancellation status, and ADR.",
-  "suggested_questions": [],
-  "proposed_analysis": {
-    "title": "Cancellation by Accommodation Type",
-    "required_columns": ["accommodation_type_name", "is_cancelled", "ADR"],
-    "draft_sql": "SELECT accommodation_type_name, COUNT(*) AS bookings, ROUND(100.0 * AVG(CASE WHEN is_cancelled = 'cancelled' THEN 1 ELSE 0 END), 2) AS cancellation_rate_pct, ROUND(AVG(ADR), 2) AS avg_adr FROM read_csv_auto('data.csv') GROUP BY accommodation_type_name ORDER BY cancellation_rate_pct DESC, bookings DESC",
-    "status": "Proposed only. Not executed automatically."
-  }
-}
-```
-
-Expected supervisor output:
+Expected routing output:
 
 ```json
 {
@@ -178,18 +156,44 @@ Expected supervisor output:
 }
 ```
 
+## Proposed New Analysis Example
+
+```text
+User question:
+How does cancellation vary by accommodation type?
+```
+
+Expected routing output:
+
+```json
+{
+  "action": "propose_new_analysis",
+  "query_key": "unsupported",
+  "confidence": 0.82,
+  "reasoning": "The question is feasible using available fields but is not covered by the current trusted workflow library.",
+  "user_message": "This analysis is not in the current workflow library, but I can propose a draft analysis using accommodation type, cancellation status, and ADR.",
+  "suggested_questions": [],
+  "proposed_analysis": {
+    "title": "Cancellation by Accommodation Type",
+    "required_columns": ["accommodation_type_name", "is_cancelled", "ADR"],
+    "draft_sql": "SELECT accommodation_type_name, COUNT(*) AS bookings, ROUND(100.0 * AVG(CASE WHEN is_cancelled = 'cancelled' THEN 1 ELSE 0 END), 2) AS cancellation_rate_pct, ROUND(AVG(ADR), 2) AS avg_adr FROM configured_data_source GROUP BY accommodation_type_name ORDER BY cancellation_rate_pct DESC, bookings DESC",
+    "status": "Proposed only. Not executed automatically."
+  }
+}
+```
+
 ## Runtime Safety
 
 The app validates the model output after generation:
 
 - If the model returns an unknown workflow key, the app converts it to `unsupported`.
 - If the model returns a non-workflow action, the app does not execute SQL and instead displays guidance or clarification.
-- If Gemini fails or is unavailable, the app falls back to deterministic routing.
+- If Guided AI Mode fails or is unavailable, the app falls back to Rule-based Mode routing.
 - If no API key is configured, the app still runs locally.
 
 ## Result Interpreter Prompt
 
-After a trusted SQL workflow runs, the app can call Gemini a second time as an interpreter. This is where the AI adds more value than deterministic routing.
+After a trusted SQL workflow runs, the app can call Gemini a second time as an evidence-grounded interpreter. This is where the AI adds more value than Rule-based Mode routing.
 
 The interpreter receives:
 
@@ -224,6 +228,6 @@ Expected interpreter output:
 
 This prompt supports the core project positioning:
 
-> LLM supervises the analysis path and interprets verified results. DuckDB computes the evidence. The app exposes the SQL, data context, and limitations.
+> Analysts define the trusted workflow library; AI routes questions and interprets verified results. DuckDB computes the evidence. The app exposes the SQL, data context, and limitations.
 
 The result is not a general chatbot. It is a governed, SQL-grounded analyst workbench for non-technical stakeholders.

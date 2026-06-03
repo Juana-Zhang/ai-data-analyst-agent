@@ -2,12 +2,13 @@
 
 ## Product Goal
 
-The app helps non-technical stakeholders retrieve trusted business insights without writing SQL.
+The app helps non-technical stakeholders retrieve trusted business insights without writing SQL. It demonstrates a pattern where analysts define reusable metric logic and SQL frameworks first, then AI helps users route, clarify, and consume those workflows through a simple interface.
 
 The design principle is:
 
 ```text
-LLM supervises the analysis path.
+Analyst defines the governed analysis framework.
+AI helps route and clarify stakeholder questions.
 DuckDB computes the evidence.
 The app exposes the SQL, data context, and limitations.
 ```
@@ -18,9 +19,9 @@ The app exposes the SQL, data context, and limitations.
 User question
     |
     v
-Supervisor layer
-    - Gemini supervisor, if configured
-    - deterministic fallback, always available
+Analysis mode layer
+    - Rule-based Mode, always available
+    - Guided AI Mode, if Gemini is configured
     - actions: run workflow, suggest analysis plan, ask clarification, propose new analysis, unsupported
     |
     v
@@ -39,7 +40,7 @@ DuckDB execution
     v
 Evidence package
     - question
-    - supervisor decision
+    - analysis mode decision
     - selected workflow
     - SQL
     - result dataframe
@@ -61,7 +62,7 @@ The current implementation runs inside Streamlit, but the core pattern is API-re
 POST /analyze
     |
     v
-Supervisor action selection
+Analysis mode action selection
     |
     v
 Workflow execution or guidance response
@@ -70,7 +71,7 @@ Workflow execution or guidance response
 SQL-backed evidence package
     |
     v
-Gemini interpreter, optional
+Guided AI interpreter, optional
     - explains only the SQL result
     - recommends follow-up questions
     - falls back to deterministic interpretation
@@ -91,9 +92,16 @@ The public demo does not connect to private systems and uses synthetic sample da
 
 ## Main Components
 
-### Supervisor
+### Analysis Modes
 
-The supervisor decides the next best action:
+The app supports two modes for routing stakeholder questions:
+
+| Mode | Best For | What It Does | Control |
+| --- | --- | --- | --- |
+| Rule-based Mode | Clear, repetitive business questions | Routes directly to predefined SQL workflows | Fully deterministic and reproducible |
+| Guided AI Mode | Vague questions, new stakeholders, or exploratory analysis needs | Uses Gemini to clarify intent, suggest analysis paths, or select workflows | Constrained by schema metadata, workflow library, and approved SQL execution |
+
+Both modes return one of the same structured actions:
 
 - `run_workflow`: the question maps clearly to a trusted SQL workflow
 - `suggest_analysis_plan`: the user wants help deciding how to analyze the dataset
@@ -101,16 +109,11 @@ The supervisor decides the next best action:
 - `propose_new_analysis`: the question is feasible from available fields but is not yet part of the trusted workflow library
 - `unsupported`: the question cannot be answered from the current dataset or workflow coverage
 
-Modes:
-
-- `Deterministic supervisor`: local keyword-based routing
-- `Gemini supervisor`: LLM-based action selection over the same trusted workflow library
-
-If Gemini fails, the app falls back safely to deterministic guidance and routing.
+If Gemini fails, Guided AI Mode falls back safely to Rule-based Mode guidance and routing.
 
 ### Interpreter
 
-When a trusted SQL workflow runs, the optional Gemini interpreter receives:
+When a trusted SQL workflow runs, the optional Guided AI interpreter receives:
 
 - the original user question
 - the selected workflow metadata
@@ -118,9 +121,9 @@ When a trusted SQL workflow runs, the optional Gemini interpreter receives:
 - the DuckDB result preview
 - data context and fields used
 
-It generates a plain-English interpretation and follow-up suggestions grounded only in the result. If Gemini is unavailable, the app falls back to deterministic interpretation templates.
+It generates a plain-English interpretation and follow-up suggestions grounded only in the result. If Gemini is unavailable, the app falls back to rule-based interpretation templates.
 
-### Workflow Library
+### Analyst-Defined Workflow Library
 
 Each workflow contains:
 
@@ -129,7 +132,7 @@ Each workflow contains:
 - required columns
 - SQL
 
-The app only executes predefined SQL workflows. This keeps the prototype reproducible and easier to validate.
+The app only executes predefined SQL workflows. This keeps the prototype reproducible and easier to validate. The current public demo uses one sample business domain dataset, but a different domain can replace this library with its own schema, metrics, and SQL frameworks.
 
 ### Data Quality Layer
 
@@ -146,7 +149,7 @@ The Dataset Profile tab includes:
 Every completed SQL analysis can produce an HTML report with:
 
 - user question
-- supervisor decision
+- analysis mode decision
 - selected workflow
 - data context
 - SQL evidence
@@ -160,6 +163,6 @@ Every completed SQL analysis can produce an HTML report with:
 
 This design avoids the biggest risk of general-purpose data chatbots: unsupported or hallucinated answers.
 
-Instead of allowing the LLM to freely generate arbitrary SQL, the app constrains SQL execution to a trusted workflow library. For vague user questions, the LLM can still provide useful analysis guidance without pretending to have computed evidence.
+Instead of allowing the LLM to freely generate arbitrary SQL, the app constrains SQL execution to a trusted workflow library. For vague user questions, Guided AI Mode can still provide useful analysis guidance without pretending to have computed evidence.
 
-For new but feasible analysis requests, Gemini can propose a draft analysis and draft SQL using available fields. The app marks this as proposed only and does not execute the draft SQL automatically.
+For new but feasible analysis requests, Guided AI Mode can propose a draft analysis and draft SQL using available fields. The app marks this as proposed only and does not execute the draft SQL automatically.

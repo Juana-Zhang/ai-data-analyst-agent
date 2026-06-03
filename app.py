@@ -398,7 +398,7 @@ Decide the next best action for the user question.
 Decision rules:
 1. Use action "run_workflow" when the question maps clearly to one existing workflow.
 2. Use action "suggest_analysis_plan" when the user asks how to analyze the data, where to start, what analysts usually check, or asks for analysis ideas.
-3. Use action "ask_clarification" when the user asks for broad business advice but does not specify whether they care about cancellations, pricing, platforms, lead time, or risky segments.
+3. Use action "ask_clarification" when the user asks for broad business advice but does not specify a measurable analysis target.
 4. Use action "propose_new_analysis" when the user asks for a reasonable analysis that is not in the workflow library but appears feasible from the available columns.
 5. Use action "unsupported" only when the question cannot be answered from the current dataset or asks for fields/workflows not available.
 6. Do not create new workflow keys.
@@ -1161,7 +1161,7 @@ with st.sidebar:
     data_source_mode = st.radio("Source mode", ["Local CSV demo", "Company database preview"])
     if data_source_mode == "Local CSV demo":
         st.write(f"Data source: `{DATA_SOURCE_NAME}`")
-        st.caption("Domain: hotel booking records")
+        st.caption("Domain: synthetic sample business dataset")
     else:
         st.write("Status: preview only")
         st.caption("Future connectors: PostgreSQL, Snowflake, BigQuery, Redshift")
@@ -1220,7 +1220,7 @@ with overview_tab:
                 if is_downloadable_report(report):
                     render_download_button(report, key=f"download_{id(message)}")
 
-    prompt = st.chat_input("Ask your data...", key="week2_prompt")
+    prompt = st.chat_input("Ask your data...", key="ask_data_prompt")
 
     if prompt:
         submit_question(prompt, supervisor_mode)

@@ -2,29 +2,36 @@
 
 A SQL-grounded AI analyst workbench for non-technical stakeholders.
 
-This project lets users ask business questions in natural language, routes clear questions to trusted analysis workflows, runs reproducible DuckDB queries on a hotel booking dataset, and returns KPI summaries, charts, business interpretations, and downloadable HTML reports for completed analyses.
+This project demonstrates how AI can support repetitive, structured analytics work for cross-functional teams. Stakeholders often need SQL-based data pulls, KPI checks, recurring summaries, and report-ready outputs, but they may not write SQL themselves. The analyst can pre-design trusted data extraction logic and analysis frameworks, then use an AI-guided interface to help stakeholders access those workflows through natural language.
+
+The public demo uses one synthetic sample domain dataset to illustrate the pattern. The same approach can be adapted to other domains by replacing the schema metadata, metric definitions, and workflow library.
 
 ## Why This Project
 
-Many business users need data answers but do not write SQL. A general chatbot can be flexible, but it can also produce unsupported answers. This prototype uses a governed workflow pattern:
+Many stakeholder requests are structured or repetitive, even when they are asked in natural language. A general chatbot can be flexible, but pure LLM-to-SQL can also create unsupported logic, reference unavailable fields, or expose sensitive data boundaries.
+
+This prototype uses a governed workflow pattern:
 
 ```text
-User question
--> Supervisor chooses a trusted workflow
--> DuckDB runs SQL against local data
--> App returns evidence, interpretation, and report
+Stakeholder question
+-> analyst-defined SQL and metric framework
+-> workflow library
+-> AI routing and clarification
+-> approved DuckDB execution
+-> SQL evidence + executive report
 ```
 
-The LLM does not directly invent data. It only helps select from supported workflows. DuckDB performs the actual computation.
+The AI does not freely query data or invent metrics. It helps clarify intent, suggest analysis paths, and select trusted workflows. DuckDB performs the actual computation using approved SQL.
 
 ## Current Features
 
 - Streamlit front end for non-technical users
 - DuckDB analytics engine over CSV-backed data
-- Gemini supervisor mode for workflow selection, analysis guidance, and clarification
-- Gemini interpreter mode for evidence-grounded result explanation
+- Rule-based Mode for deterministic workflow routing
+- Guided AI Mode for Gemini-powered workflow selection, analysis guidance, and clarification
+- Gemini interpreter for evidence-grounded result explanation after approved SQL runs
 - Proposed new analysis mode for feasible questions outside the trusted workflow library
-- Deterministic supervisor fallback when Gemini is unavailable
+- Safe fallback when Gemini is unavailable
 - Trusted SQL workflow library
 - Transparent SQL for every result
 - KPI cards, tables, and quick charts
@@ -41,7 +48,7 @@ The LLM does not directly invent data. It only helps select from supported workf
 Each downloaded report is generated only after a SQL workflow runs. It includes:
 
 - user question
-- supervisor decision
+- analysis mode decision
 - selected workflow
 - data source and DuckDB table reference
 - rows analyzed and columns available
@@ -53,16 +60,48 @@ Each downloaded report is generated only after a SQL workflow runs. It includes:
 - limitations
 - recommended next steps
 
-## Supported Workflows
+## Build Approach
 
-- Cancellation overview
-- Cancellation risk by city
-- Platform performance
-- Payment model analysis
-- ADR by star rating
-- Lead time and cancellation
-- High-risk booking segment detection
-- Raw data preview
+| Step | What Happens | Why It Matters |
+| --- | --- | --- |
+| 1 | Use one sample business domain dataset | Demonstrates the pattern without exposing private company data |
+| 2 | Inspect schema and metric possibilities | Defines what the system can answer safely |
+| 3 | Pre-design reusable analysis frameworks | Converts repetitive SQL and reporting work into reusable workflows |
+| 4 | Add AI routing and clarification | Helps stakeholders ask better questions and find the right workflow |
+| 5 | Execute only approved SQL | Keeps computation reproducible and reviewable |
+| 6 | Return evidence and reports | Gives users SQL, interpretation, limitations, next steps, and downloadable output |
+
+## Analysis Modes
+
+| Mode | Best For | What It Does | Control |
+| --- | --- | --- | --- |
+| Rule-based Mode | Clear, repetitive business questions | Routes directly to predefined SQL workflows | Fully deterministic and reproducible |
+| Guided AI Mode | Vague questions, new stakeholders, or exploratory analysis needs | Uses Gemini to clarify intent, suggest analysis paths, or select workflows | Constrained by schema metadata, workflow library, and approved SQL execution |
+
+## Design Guardrails
+
+| Risk | Guardrail |
+| --- | --- |
+| Free-form LLM-to-SQL | SQL execution is limited to approved workflows |
+| Unsupported fields or hallucinated logic | AI responses are grounded in available schema metadata and workflow coverage |
+| Unreviewed new analysis | New analyses can be proposed, but untrusted SQL is not automatically executed |
+| Black-box answers | Completed analyses expose SQL evidence, data context, limitations, and next steps |
+| Private data or key exposure | The public demo uses synthetic sample data; real data and API keys stay outside the repo |
+
+## Sample Domain Workflows
+
+The current demo includes a workflow library for one sample business domain:
+
+- baseline KPI overview
+- dimension-level risk comparison
+- channel or platform performance
+- payment model comparison
+- pricing or value segmentation
+- lead-time behavior
+- high-risk segment detection
+- raw data preview
+
+These workflows are examples of how an analyst can encode repeatable business logic. A different company or domain would replace this library with its own metric definitions and SQL frameworks.
 
 ## Tech Stack
 
@@ -90,7 +129,7 @@ Data source behavior:
 
 - Local development uses your private `data.csv` when it exists.
 - Public demo deployment falls back to the included synthetic `sample_data.csv`.
-- The synthetic sample keeps the same schema as the private hotel booking dataset, but does not contain real records.
+- The synthetic sample keeps the same schema shape as the local demo dataset, but does not contain real records.
 
 For local full-data analysis, place the private dataset in the project root:
 
@@ -130,20 +169,9 @@ You can share this project with others by deploying it to Streamlit Community Cl
 
 The deployed app will use `sample_data.csv` by default, so recruiters and reviewers can open a public URL without needing your local machine, private dataset, or local API key file.
 
-## Weekly Progress
-
-| Week | Focus | Deliverable |
-| --- | --- | --- |
-| Week 1 | Streamlit and DuckDB foundation | Chat-style prototype with one fixed SQL query |
-| Week 2 | Analyst workbench pattern | Rule-based workflow routing, SQL transparency, KPI tables, charts |
-| Week 3 | Analysis quality | Data quality checks, missing-value summaries, high-risk segments, business interpretation |
-| Week 4 | AI supervisor layer | Gemini workflow selection with deterministic fallback |
-| Week 5 | Executive outputs | Downloadable HTML reports with findings, SQL evidence, limitations, and next steps |
-| Week 6 | Portfolio polish | README, architecture docs, setup instructions, and demo script |
-
 ## Portfolio Positioning
 
-This is not a universal data chatbot. It is a configurable, SQL-grounded analyst workbench. The current demo uses a hotel booking dataset, but the architecture can support other business domains by replacing the workflow library and metadata layer.
+This is not a universal data chatbot. It is a configurable, SQL-grounded analyst workbench that demonstrates how structured analytics work can be productized for non-technical stakeholders. The project highlights product thinking, SQL framework design, AI workflow design with guardrails, local analytics with DuckDB, and executive reporting UX.
 
 ## Integration Preview
 
@@ -157,7 +185,7 @@ These integrations are shown as product and architecture previews only. The publ
 
 ## Limitations
 
-- The current workflow library is designed around the hotel booking dataset.
+- The current workflow library is designed around one sample domain dataset.
 - The analysis is descriptive and does not prove causality.
 - The app does not yet generate new SQL freely from arbitrary user questions.
 - HTML reporting is implemented before PDF export for simplicity and reliability.
