@@ -216,9 +216,12 @@ DEFAULT_SUGGESTED_QUESTIONS = [
     "Which booking segments look highest risk?",
 ]
 
+RULE_BASED_MODE = "Rule-based Mode"
+GUIDED_AI_MODE = "Guided AI Mode"
+
 SUPERVISOR_MODES = [
-    "Deterministic supervisor",
-    "Gemini supervisor (optional)",
+    RULE_BASED_MODE,
+    GUIDED_AI_MODE,
 ]
 
 
@@ -288,7 +291,7 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
         return {
             "action": "unsupported",
             "query_key": "unsupported",
-            "supervisor": "Deterministic supervisor",
+            "supervisor": RULE_BASED_MODE,
             "confidence": 0.8,
             "reasoning": "The question requires fields that are not available in the current dataset.",
             "user_message": "I cannot answer this from the current dataset because the required demographic fields are not available.",
@@ -299,7 +302,7 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
         return {
             "action": "propose_new_analysis",
             "query_key": "unsupported",
-            "supervisor": "Deterministic supervisor",
+            "supervisor": RULE_BASED_MODE,
             "confidence": 0.72,
             "reasoning": "The question is feasible from available fields but is not yet part of the trusted workflow library.",
             "user_message": "This is not in the current trusted workflow library, but it can be proposed as a new analysis using available dataset fields. The draft SQL is not executed automatically.",
@@ -325,7 +328,7 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
         return {
             "action": "run_workflow",
             "query_key": query_key,
-            "supervisor": "Deterministic supervisor",
+            "supervisor": RULE_BASED_MODE,
             "confidence": 0.75,
             "reasoning": f"Matched the question to the trusted workflow: {workflow['title']}.",
             "user_message": f"I selected the {workflow['title']} workflow because it can answer this question with SQL-backed evidence.",
@@ -336,7 +339,7 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
         return {
             "action": "suggest_analysis_plan",
             "query_key": "unsupported",
-            "supervisor": "Deterministic supervisor",
+            "supervisor": RULE_BASED_MODE,
             "confidence": 0.85,
             "reasoning": "The user is asking for guidance on how to begin analyzing the dataset.",
             "user_message": (
@@ -349,7 +352,7 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
     return {
         "action": "ask_clarification",
         "query_key": "unsupported",
-        "supervisor": "Deterministic supervisor",
+        "supervisor": RULE_BASED_MODE,
         "confidence": 0.65,
         "reasoning": "The question is broad, so the app should guide the user toward a concrete analysis direction.",
         "user_message": "I can help, but I need a clearer business direction. For this dataset, you can explore cancellations, city risk, platform performance, payment model, ADR, lead time, or high-risk segments.",
@@ -437,16 +440,16 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
     api_key = get_gemini_api_key()
     if not api_key:
         fallback = deterministic_supervisor(question)
-        fallback["supervisor"] = "Deterministic supervisor fallback"
-        fallback["reasoning"] += " Gemini was selected, but no GEMINI_API_KEY was configured."
+        fallback["supervisor"] = "Rule-based Mode fallback"
+        fallback["reasoning"] += " Guided AI Mode was selected, but no GEMINI_API_KEY was configured."
         return fallback
 
     try:
         from google import genai
     except ImportError:
         fallback = deterministic_supervisor(question)
-        fallback["supervisor"] = "Deterministic supervisor fallback"
-        fallback["reasoning"] += " Gemini was selected, but the google-genai package is not installed."
+        fallback["supervisor"] = "Rule-based Mode fallback"
+        fallback["reasoning"] += " Guided AI Mode was selected, but the google-genai package is not installed."
         return fallback
 
     metadata = json.dumps(workflow_metadata(), indent=2)
@@ -476,7 +479,7 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         return {
             "action": action,
             "query_key": query_key,
-            "supervisor": f"Gemini supervisor ({model_name})",
+            "supervisor": f"Guided AI Mode ({model_name})",
             "confidence": float(decision.get("confidence", 0.5)),
             "reasoning": str(decision.get("reasoning", "Gemini selected this workflow.")),
             "user_message": str(decision.get("user_message", "")),
@@ -485,13 +488,13 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         }
     except Exception as exc:
         fallback = deterministic_supervisor(question)
-        fallback["supervisor"] = "Deterministic supervisor fallback"
-        fallback["reasoning"] += f" Gemini supervisor failed safely: {exc}"
+        fallback["supervisor"] = "Rule-based Mode fallback"
+        fallback["reasoning"] += f" Guided AI Mode failed safely: {exc}"
         return fallback
 
 
 def supervisor_decision(question: str, mode: str) -> dict[str, str | float]:
-    if mode == "Gemini supervisor (optional)":
+    if mode == GUIDED_AI_MODE:
         return gemini_supervisor(question)
     return deterministic_supervisor(question)
 
@@ -840,7 +843,7 @@ def create_report_package(question: str, decision: dict[str, str | float]) -> di
     result = run_sql(query["sql"])
     sql = query["sql"].strip()
     context = build_data_context(query_key)
-    if str(decision.get("supervisor", "")).startswith("Gemini supervisor"):
+    if str(decision.get("supervisor", "")).startswith(GUIDED_AI_MODE):
         insight = gemini_interpret_result(question, query_key, sql, result, context)
     else:
         insight = {
@@ -941,7 +944,7 @@ def build_report_html(report: dict) -> str:
   <div class="meta">
     <p><strong>Created:</strong> {html.escape(report["created_at"])}</p>
     <p><strong>User question:</strong> {html.escape(report["question"])}</p>
-    <p><strong>Supervisor:</strong> {html.escape(str(decision.get("supervisor", "")))}</p>
+    <p><strong>Analysis mode:</strong> {html.escape(str(decision.get("supervisor", "")))}</p>
     <p><strong>Confidence:</strong> {html.escape(str(decision.get("confidence", "")))}</p>
     <p><strong>Supervisor reasoning:</strong> {html.escape(str(decision.get("reasoning", "")))}</p>
   </div>
@@ -1130,13 +1133,15 @@ st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
 st.title("AI Data Analyst Workbench (Prototype)")
 st.caption("A local DuckDB-powered analysis workflow for non-technical stakeholders.")
 st.markdown(
-    "**Built by Nuonan (Juana) Zhang**  \n"
-    "LinkedIn: [www.linkedin.com/in/juanazhang](https://www.linkedin.com/in/juanazhang/)  \n"
+    "**Built by Nuonan (Juana) Zhang** · "
+    "LinkedIn: [www.linkedin.com/in/juanazhang](https://www.linkedin.com/in/juanazhang/) · "
     "GitHub: [github.com/Juana-Zhang/ai-data-analyst-agent](https://github.com/Juana-Zhang/ai-data-analyst-agent)"
 )
 st.info(
-    "How to use this demo: choose Gemini or deterministic supervisor in the sidebar, "
-    "ask a business question in the chat box, review the selected workflow and SQL evidence, "
+    "**How to use this demo**\n\n"
+    "Use **Guided AI Mode** for exploratory questions or when you are unsure where to start. "
+    "Use **Rule-based Mode** to run trusted predefined analyses with stable SQL evidence.\n\n"
+    "Ask a business question in the chat box, review the selected workflow and SQL evidence, "
     "then download an HTML report when a trusted analysis runs."
 )
 
@@ -1162,8 +1167,8 @@ with st.sidebar:
         st.caption("Future connectors: PostgreSQL, Snowflake, BigQuery, Redshift")
 
     st.divider()
-    st.subheader("Supervisor")
-    supervisor_mode = st.radio("Supervisor mode", SUPERVISOR_MODES)
+    st.subheader("Analysis Mode")
+    supervisor_mode = st.radio("Choose how questions are routed", SUPERVISOR_MODES)
     st.session_state.supervisor_mode = supervisor_mode
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
@@ -1171,9 +1176,9 @@ with st.sidebar:
         submit_question(selected_question, supervisor_mode)
 
     st.divider()
-    st.subheader("Supervisor Layer")
-    st.write("The supervisor decides whether to run a trusted workflow, suggest an analysis plan, or ask for clarification.")
-    st.write("Gemini is optional. Without a configured key, the app falls back safely to local guidance and routing.")
+    st.subheader("Routing Logic")
+    st.write("Rule-based Mode runs stable predefined workflows.")
+    st.write("Guided AI Mode uses Gemini to clarify vague questions, suggest analysis paths, or route to trusted workflows.")
 
     st.divider()
     st.subheader("Integration Preview")
@@ -1198,7 +1203,7 @@ with overview_tab:
                 decision = message.get("decision")
                 report = message.get("report")
                 if decision:
-                    st.write(f"Supervisor: **{decision['supervisor']}**")
+                    st.write(f"Analysis mode: **{decision['supervisor']}**")
                     st.caption(f"Confidence: {decision['confidence']}")
                     st.caption(f"Action: {decision.get('action', 'run_workflow')}")
                     st.write(decision["reasoning"])
@@ -1255,7 +1260,7 @@ with report_tab:
     if latest_report:
         st.write(f"**Question:** {latest_report['question']}")
         st.write(f"**Workflow:** {latest_report['workflow_title']}")
-        st.write(f"**Supervisor:** {latest_report['decision'].get('supervisor')}")
+        st.write(f"**Analysis mode:** {latest_report['decision'].get('supervisor')}")
         st.write(f"**Interpretation source:** {latest_report.get('interpretation_source', 'Unknown')}")
         st.info(latest_report["interpretation"])
 
@@ -1289,46 +1294,118 @@ with report_tab:
 
     st.subheader("Project Goal")
     st.write(
-        "This project explores an AI analyst workbench pattern for cross-functional teams. "
-        "The goal is to let non-technical stakeholders ask business questions in natural "
-        "language while the system retrieves reproducible, SQL-backed evidence from local data."
+        "This project demonstrates how AI can support repetitive, structured analytics work for "
+        "cross-functional teams. In many business settings, stakeholders frequently need SQL-based "
+        "data pulls, KPI checks, recurring summaries, and report-ready outputs. Instead of asking "
+        "analysts to rewrite similar SQL every time, analysts can pre-design trusted data extraction "
+        "logic and analysis frameworks, then let an AI-guided interface help stakeholders access "
+        "them through natural language."
+    )
+    st.write(
+        "This demo uses one sample business domain dataset to illustrate the pattern. The approach "
+        "can be adapted to other domains by replacing the schema metadata, metric definitions, and "
+        "workflow library."
     )
 
-    st.subheader("Weekly Roadmap")
+    st.subheader("Build Approach")
+    flow_steps = [
+        ("1", "Sample domain dataset", "Use one business domain dataset to demonstrate the pattern."),
+        ("2", "Schema and metric understanding", "Inspect available fields and define what can be answered safely."),
+        ("3", "Analyst-defined framework", "Pre-design reusable data extraction logic and analysis workflows."),
+        ("4", "AI routing layer", "Use AI to clarify intent, suggest paths, or select trusted workflows."),
+        ("5", "Approved SQL execution", "Run only governed SQL through DuckDB and expose the evidence."),
+        ("6", "Report-ready output", "Return interpretation, limitations, next steps, and downloadable reports."),
+    ]
+
+    columns = st.columns(3)
+    for index, (step, title, detail) in enumerate(flow_steps):
+        with columns[index % 3]:
+            st.markdown(f"**{step}. {title}**")
+            st.caption(detail)
+
     st.markdown(
         """
-        | Week | Focus | Deliverable |
-        | --- | --- | --- |
-        | Week 1 | Build the basic Streamlit and DuckDB connection | A chat-style prototype where any question runs a fixed SQL query: `SELECT * FROM read_csv_auto('data.csv') LIMIT 10;` |
-        | Week 2 | Upgrade the fixed-query demo into an analyst workbench | Rule-based question routing, pre-designed SQL workflows, KPI summaries, charts, schema profiling, and transparent SQL display |
-        | Week 3 | Strengthen the analysis layer | Add data quality checks, missing-value summaries, high-risk segment detection, and richer business interpretations |
-        | Week 4 | Add an AI supervisor layer | Add a supervisor mode that can use Gemini to choose among trusted workflows, with a deterministic fallback when no API key is configured |
-        | Week 5 | Generate executive outputs | Add one-click downloadable HTML reports with findings, SQL evidence, limitations, and recommended next steps |
-        | Week 6 | Polish for portfolio presentation | Add README, architecture documentation, setup instructions, demo script, and future extension plan |
+        ```text
+        Stakeholder question
+        -> analyst-defined SQL and metric framework
+        -> workflow library
+        -> AI routing and clarification
+        -> approved DuckDB execution
+        -> SQL evidence + executive report
+        ```
         """
     )
 
-    st.subheader("Current Capabilities")
-    st.write(
-        "- Local CSV analysis through DuckDB\n"
-        "- Deterministic supervisor for local workflow routing\n"
-        "- Optional Gemini supervisor for LLM-based workflow selection\n"
-        "- Safe fallback when Gemini is not configured or unavailable\n"
-        "- Transparent SQL for every result\n"
-        "- KPI summaries, tables, and quick charts\n"
-        "- Dataset schema inspection and quality checks\n"
-        "- One-click downloadable HTML reports"
+    st.subheader("Analysis Modes")
+    st.table(
+        pd.DataFrame(
+            [
+                {
+                    "Mode": "Rule-based Mode",
+                    "Best for": "Clear, repetitive business questions",
+                    "What it does": "Routes directly to predefined SQL workflows",
+                    "Control": "Fully deterministic and reproducible",
+                },
+                {
+                    "Mode": "Guided AI Mode",
+                    "Best for": "Vague questions, new stakeholders, or exploratory analysis needs",
+                    "What it does": "Uses Gemini to clarify intent, suggest analysis paths, or select workflows",
+                    "Control": "Constrained by schema metadata, workflow library, and approved SQL execution",
+                },
+            ]
+        )
     )
 
-    st.subheader("Gemini Setup")
-    st.write(
-        "To enable the optional Gemini supervisor, install `google-genai` and configure "
-        "`GEMINI_API_KEY` through an environment variable or `.streamlit/secrets.toml`. "
-        "The app remains usable without this key."
+    st.subheader("Why This Matters")
+    value_col1, value_col2 = st.columns(2)
+    with value_col1:
+        st.markdown("**For stakeholders**")
+        st.write(
+            "- Ask business questions without writing SQL\n"
+            "- Get consistent answers for recurring analysis needs\n"
+            "- Use AI guidance when they are unsure where to start"
+        )
+    with value_col2:
+        st.markdown("**For analysts**")
+        st.write(
+            "- Reuse trusted SQL and metric logic instead of rewriting repetitive queries\n"
+            "- Keep control over definitions, schema assumptions, and data boundaries\n"
+            "- Turn structured analysis work into a self-serve workflow"
+        )
+
+    st.subheader("Design Guardrails")
+    st.table(
+        pd.DataFrame(
+            [
+                {
+                    "Risk": "Free-form LLM-to-SQL",
+                    "Guardrail": "SQL execution is limited to approved workflows.",
+                },
+                {
+                    "Risk": "Unsupported fields or hallucinated logic",
+                    "Guardrail": "AI responses are grounded in available schema metadata and workflow coverage.",
+                },
+                {
+                    "Risk": "Unreviewed new analysis",
+                    "Guardrail": "New analyses can be proposed, but untrusted SQL is not automatically executed.",
+                },
+                {
+                    "Risk": "Black-box answers",
+                    "Guardrail": "Every completed analysis exposes SQL evidence, data context, limitations, and next steps.",
+                },
+                {
+                    "Risk": "Private data or key exposure",
+                    "Guardrail": "The public demo uses synthetic sample data; real data and API keys stay outside the repo.",
+                },
+            ]
+        )
     )
 
-    st.subheader("Portfolio Positioning")
+    st.subheader("What This Demonstrates")
     st.write(
-        "This demo is designed for recruiters and hiring managers, while the product experience is "
-        "designed for non-technical stakeholders who need trusted, SQL-backed business answers."
+        "- Product thinking for non-technical analytics self-service\n"
+        "- SQL framework design for structured and repetitive analysis work\n"
+        "- AI workflow design with clear safety boundaries\n"
+        "- DuckDB-based local analytics and transparent evidence generation\n"
+        "- Executive reporting UX for decision support"
     )
