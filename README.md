@@ -2,7 +2,7 @@
 
 A SQL-grounded AI analyst workbench for non-technical stakeholders.
 
-This project lets users ask business questions in natural language, routes clear questions to trusted analysis workflows, runs reproducible DuckDB queries on a local hotel booking dataset, and returns KPI summaries, charts, business interpretations, and downloadable HTML reports for completed analyses.
+This project lets users ask business questions in natural language, routes clear questions to trusted analysis workflows, runs reproducible DuckDB queries on a hotel booking dataset, and returns KPI summaries, charts, business interpretations, and downloadable HTML reports for completed analyses.
 
 ## Why This Project
 
@@ -20,8 +20,10 @@ The LLM does not directly invent data. It only helps select from supported workf
 ## Current Features
 
 - Streamlit front end for non-technical users
-- DuckDB local analytics engine
+- DuckDB analytics engine over CSV-backed data
 - Gemini supervisor mode for workflow selection, analysis guidance, and clarification
+- Gemini interpreter mode for evidence-grounded result explanation
+- Proposed new analysis mode for feasible questions outside the trusted workflow library
 - Deterministic supervisor fallback when Gemini is unavailable
 - Trusted SQL workflow library
 - Transparent SQL for every result
@@ -29,6 +31,7 @@ The LLM does not directly invent data. It only helps select from supported workf
 - Dataset schema and data quality checks
 - Unsupported question handling
 - Guidance for users who do not know where to start
+- Draft analysis proposals for new questions, without automatic SQL execution
 - One-click downloadable HTML executive report
 - Data context and field lineage in each report
 - Enterprise integration preview for database, API, and Slack/Teams patterns
@@ -46,6 +49,7 @@ Each downloaded report is generated only after a SQL workflow runs. It includes:
 - SQL evidence
 - result table
 - business interpretation
+- interpretation source
 - limitations
 - recommended next steps
 
@@ -82,7 +86,13 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Place the dataset in the project root:
+Data source behavior:
+
+- Local development uses your private `data.csv` when it exists.
+- Public demo deployment falls back to the included synthetic `sample_data.csv`.
+- The synthetic sample keeps the same schema as the private hotel booking dataset, but does not contain real records.
+
+For local full-data analysis, place the private dataset in the project root:
 
 ```text
 data.csv
@@ -107,6 +117,18 @@ Run the app:
 ```bash
 python -m streamlit run app.py
 ```
+
+## Public Demo Deployment
+
+You can share this project with others by deploying it to Streamlit Community Cloud:
+
+1. Push this repository to GitHub.
+2. Make sure `sample_data.csv` is included and `data.csv` is not included.
+3. Create a new Streamlit app from the GitHub repository.
+4. Set the main file path to `app.py`.
+5. Optional: add `GEMINI_API_KEY` and `GEMINI_MODEL` in Streamlit Cloud secrets.
+
+The deployed app will use `sample_data.csv` by default, so recruiters and reviewers can open a public URL without needing your local machine, private dataset, or local API key file.
 
 ## Weekly Progress
 

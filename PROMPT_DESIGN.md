@@ -1,8 +1,8 @@
 # Prompt Design
 
-This project uses the LLM as a supervisor, not as a free-form SQL generator.
+This project uses the LLM as an analysis supervisor and result interpreter, not as a free-form SQL generator.
 
-The prompt is designed to make the model choose from a trusted workflow library. DuckDB performs the actual computation using predefined SQL. This keeps the app reproducible, inspectable, and safer for business users.
+The prompt is designed to make the model decide the next best analytical action. If a question is specific, the model chooses from a trusted workflow library. If a user does not know where to start, the model suggests useful analysis directions. DuckDB performs the actual computation using predefined SQL. This keeps the app helpful, reproducible, inspectable, and safer for business users.
 
 ## Core Supervisor Prompt
 
@@ -14,19 +14,28 @@ Product context:
 - The goal is to answer data questions only through trusted, reproducible workflows.
 - The LLM is not allowed to write arbitrary SQL or invent data.
 - DuckDB will execute the selected workflow's predefined SQL.
+- The LLM should help users frame better analytical questions when their request is vague.
 
 Your task:
-Choose exactly one workflow_key from the workflow library for the user question.
+Decide the next best action for the user question.
 
 Decision rules:
-1. Select the most relevant workflow if the question can be answered by an existing workflow.
-2. Choose "unsupported" if the question is too broad, asks for advice without a clear analysis target, or requires fields/workflows not listed.
-3. Do not create new workflow keys.
-4. Do not answer the business question directly.
-5. Keep the reasoning short and explain why the workflow was selected or why the request is unsupported.
+1. Use action "run_workflow" when the question maps clearly to one existing workflow.
+2. Use action "suggest_analysis_plan" when the user asks how to analyze the data, where to start, what analysts usually check, or asks for analysis ideas.
+3. Use action "ask_clarification" when the user asks for broad business advice but does not specify whether they care about cancellations, pricing, platforms, lead time, or risky segments.
+4. Use action "propose_new_analysis" when the user asks for a reasonable analysis that is not in the workflow library but appears feasible from the available columns.
+5. Use action "unsupported" only when the question cannot be answered from the current dataset or asks for fields/workflows not available.
+6. Do not create new workflow keys.
+7. Do not execute or claim results for proposed analyses.
+8. For propose_new_analysis, provide a draft SQL query using only read_csv_auto('data.csv') and available columns. This SQL is for review only and will not be executed automatically.
+9. Do not invent data or findings.
+10. If action is not "run_workflow", set query_key to "unsupported" and provide helpful suggested questions or a proposed analysis.
 
 Workflow library:
 {workflow_metadata}
+
+Available dataset columns:
+{columns}
 
 User question:
 {question}
@@ -35,9 +44,18 @@ Return only valid JSON. Do not include markdown, comments, or extra text.
 
 JSON schema:
 {
-  "query_key": "one workflow_key from the library, or unsupported",
+  "action": "run_workflow | suggest_analysis_plan | ask_clarification | propose_new_analysis | unsupported",
+  "query_key": "one workflow_key from the library if action is run_workflow, otherwise unsupported",
   "confidence": 0.0,
-  "reasoning": "one short plain-English sentence"
+  "reasoning": "one short plain-English sentence",
+  "user_message": "a helpful message to show the user",
+  "suggested_questions": ["3 to 5 concrete questions the user could ask next"],
+  "proposed_analysis": {
+    "title": "short title for the proposed analysis",
+    "required_columns": ["columns needed for the proposed analysis"],
+    "draft_sql": "read-only draft SQL using read_csv_auto('data.csv')",
+    "status": "Proposed only. Not executed automatically."
+  }
 }
 ```
 
@@ -45,17 +63,25 @@ JSON schema:
 
 The prompt has three main constraints:
 
-1. **Workflow-only selection**
+1. **Workflow-constrained computation**
 
-   The model can only choose from known workflow keys. It cannot invent a new analysis path.
+   The model can only run known workflow keys. It cannot invent a new SQL analysis path.
 
 2. **No arbitrary SQL generation**
 
    The model does not write SQL. This reduces hallucination risk and keeps evidence reproducible.
 
-3. **Explicit unsupported behavior**
+3. **Interactive guidance**
 
-   The model is allowed to say a question is outside coverage. This is important for a trusted analyst workbench because not every question can be answered from the current dataset.
+   If the user does not know how to analyze the dataset, the model suggests concrete next questions instead of stopping at `unsupported`.
+
+4. **Explicit unsupported behavior**
+
+   The model only uses `unsupported` when the question cannot be answered from the current data or workflow coverage.
+
+5. **Controlled exploration**
+
+   The model can propose a new analysis when the fields exist, but the app does not execute draft SQL automatically.
 
 ## Example Input
 
@@ -68,9 +94,38 @@ Expected supervisor output:
 
 ```json
 {
+  "action": "run_workflow",
   "query_key": "cancellation_overview",
   "confidence": 0.9,
-  "reasoning": "The question asks for the overall cancellation rate, which is covered by the cancellation overview workflow."
+  "reasoning": "The question asks for the overall cancellation rate, which is covered by the cancellation overview workflow.",
+  "user_message": "I selected the cancellation overview workflow because it provides the overall booking and cancellation baseline.",
+  "suggested_questions": []
+}
+```
+
+## Guidance Example
+
+```text
+User question:
+I don't know how to analyze this dataset. Where should I start?
+```
+
+Expected supervisor output:
+
+```json
+{
+  "action": "suggest_analysis_plan",
+  "query_key": "unsupported",
+  "confidence": 0.9,
+  "reasoning": "The user is asking for analysis guidance rather than a specific metric.",
+  "user_message": "A good starting point is to understand the cancellation baseline, then compare cancellation risk by city, platform, lead time, and high-risk booking segments.",
+  "suggested_questions": [
+    "What is the overall cancellation rate?",
+    "Which cities have the highest cancellation risk?",
+    "How do platforms compare on cancellation rate and ADR?",
+    "Does booking lead time relate to cancellation risk?",
+    "Which booking segments look highest risk?"
+  ]
 }
 ```
 
@@ -78,16 +133,48 @@ Expected supervisor output:
 
 ```text
 User question:
-What's your advice?
+Are younger customers more likely to cancel?
+```
+
+## Proposed New Analysis Example
+
+```text
+User question:
+How does cancellation vary by accommodation type?
 ```
 
 Expected supervisor output:
 
 ```json
 {
+  "action": "propose_new_analysis",
   "query_key": "unsupported",
-  "confidence": 0.8,
-  "reasoning": "The question is too broad and does not specify a supported data analysis target."
+  "confidence": 0.82,
+  "reasoning": "The question is feasible using available fields but is not covered by the current trusted workflow library.",
+  "user_message": "This analysis is not in the current workflow library, but I can propose a draft analysis using accommodation type, cancellation status, and ADR.",
+  "suggested_questions": [],
+  "proposed_analysis": {
+    "title": "Cancellation by Accommodation Type",
+    "required_columns": ["accommodation_type_name", "is_cancelled", "ADR"],
+    "draft_sql": "SELECT accommodation_type_name, COUNT(*) AS bookings, ROUND(100.0 * AVG(CASE WHEN is_cancelled = 'cancelled' THEN 1 ELSE 0 END), 2) AS cancellation_rate_pct, ROUND(AVG(ADR), 2) AS avg_adr FROM read_csv_auto('data.csv') GROUP BY accommodation_type_name ORDER BY cancellation_rate_pct DESC, bookings DESC",
+    "status": "Proposed only. Not executed automatically."
+  }
+}
+```
+
+Expected supervisor output:
+
+```json
+{
+  "action": "unsupported",
+  "query_key": "unsupported",
+  "confidence": 0.85,
+  "reasoning": "The current dataset does not include customer age.",
+  "user_message": "I cannot answer this from the current dataset because there is no customer age field.",
+  "suggested_questions": [
+    "What is the overall cancellation rate?",
+    "Which booking segments look highest risk?"
+  ]
 }
 ```
 
@@ -96,13 +183,47 @@ Expected supervisor output:
 The app validates the model output after generation:
 
 - If the model returns an unknown workflow key, the app converts it to `unsupported`.
+- If the model returns a non-workflow action, the app does not execute SQL and instead displays guidance or clarification.
 - If Gemini fails or is unavailable, the app falls back to deterministic routing.
 - If no API key is configured, the app still runs locally.
+
+## Result Interpreter Prompt
+
+After a trusted SQL workflow runs, the app can call Gemini a second time as an interpreter. This is where the AI adds more value than deterministic routing.
+
+The interpreter receives:
+
+- user question
+- selected workflow
+- SQL executed
+- result preview
+- data context
+
+It must only explain what is supported by the SQL output.
+
+Core constraints:
+
+```text
+You must explain only what is supported by the SQL result.
+Do not invent numbers, columns, causes, or recommendations not grounded in the result.
+Do not claim causality.
+Use cautious language such as "suggests", "is associated with", or "should be investigated".
+```
+
+Expected interpreter output:
+
+```json
+{
+  "interpretation": "2 to 4 plain-English sentences explaining the key insight from the result",
+  "next_steps": ["2 to 4 recommended follow-up analyses or business actions"],
+  "suggested_questions": ["2 to 4 concrete follow-up questions the user could ask next"]
+}
+```
 
 ## Design Philosophy
 
 This prompt supports the core project positioning:
 
-> LLM selects the workflow. DuckDB computes the evidence. The app exposes the SQL and limitations.
+> LLM supervises the analysis path and interprets verified results. DuckDB computes the evidence. The app exposes the SQL, data context, and limitations.
 
 The result is not a general chatbot. It is a governed, SQL-grounded analyst workbench for non-technical stakeholders.

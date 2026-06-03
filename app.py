@@ -10,7 +10,23 @@ import pandas as pd
 import streamlit as st
 
 
-DATA_PATH = Path("data.csv")
+LOCAL_DATA_PATH = Path("data.csv")
+SAMPLE_DATA_PATH = Path("sample_data.csv")
+
+
+def resolve_data_path() -> Path:
+    configured_path = os.getenv("APP_DATA_PATH")
+    if configured_path:
+        return Path(configured_path)
+    if LOCAL_DATA_PATH.exists():
+        return LOCAL_DATA_PATH
+    return SAMPLE_DATA_PATH
+
+
+DATA_PATH = resolve_data_path()
+DATA_SOURCE_NAME = DATA_PATH.name
+DATA_PATH_FOR_SQL = str(DATA_PATH).replace("'", "''")
+DATA_SQL_REFERENCE = f"read_csv_auto('{DATA_PATH_FOR_SQL}')"
 
 QUERY_LIBRARY = {
     "cancellation_overview": {
@@ -163,7 +179,7 @@ QUERY_LIBRARY = {
                 platform_group_name,
                 payment_model,
                 booking_route_type
-            HAVING COUNT(*) >= 1000
+            HAVING COUNT(*) >= 20
             ORDER BY cancellation_rate_pct DESC, bookings DESC
             LIMIT 20
         """,
@@ -207,7 +223,8 @@ SUPERVISOR_MODES = [
 
 
 def run_sql(sql: str) -> pd.DataFrame:
-    return duckdb.sql(sql).df()
+    resolved_sql = sql.replace("read_csv_auto('data.csv')", DATA_SQL_REFERENCE)
+    return duckdb.sql(resolved_sql).df()
 
 
 def choose_query_key(question: str) -> str:
@@ -256,8 +273,52 @@ def workflow_metadata() -> list[dict[str, str]]:
     return rows
 
 
+def dataset_column_metadata() -> list[dict[str, str]]:
+    try:
+        profile = profile_dataset()
+        return profile[["column_name", "column_type"]].to_dict(orient="records")
+    except Exception:
+        return []
+
+
 def deterministic_supervisor(question: str) -> dict[str, str | float]:
     text = question.lower()
+
+    if any(word in text for word in ["age", "income", "gender", "salary", "customer demographic"]):
+        return {
+            "action": "unsupported",
+            "query_key": "unsupported",
+            "supervisor": "Deterministic supervisor",
+            "confidence": 0.8,
+            "reasoning": "The question requires fields that are not available in the current dataset.",
+            "user_message": "I cannot answer this from the current dataset because the required demographic fields are not available.",
+            "suggested_questions": DEFAULT_SUGGESTED_QUESTIONS,
+        }
+
+    if "accommodation" in text or "hotel type" in text or "property type" in text:
+        return {
+            "action": "propose_new_analysis",
+            "query_key": "unsupported",
+            "supervisor": "Deterministic supervisor",
+            "confidence": 0.72,
+            "reasoning": "The question is feasible from available fields but is not yet part of the trusted workflow library.",
+            "user_message": "This is not in the current trusted workflow library, but it can be proposed as a new analysis using available dataset fields. The draft SQL is not executed automatically.",
+            "suggested_questions": [],
+            "proposed_analysis": {
+                "title": "Cancellation by Accommodation Type",
+                "required_columns": ["accommodation_type_name", "is_cancelled", "ADR"],
+                "draft_sql": (
+                    "SELECT accommodation_type_name, COUNT(*) AS bookings, "
+                    "ROUND(100.0 * AVG(CASE WHEN is_cancelled = 'cancelled' THEN 1 ELSE 0 END), 2) AS cancellation_rate_pct, "
+                    "ROUND(AVG(ADR), 2) AS avg_adr "
+                    f"FROM {DATA_SQL_REFERENCE} "
+                    "GROUP BY accommodation_type_name "
+                    "ORDER BY cancellation_rate_pct DESC, bookings DESC"
+                ),
+                "status": "Proposed only. Not executed automatically.",
+            },
+        }
+
     query_key = choose_query_key(question)
     if query_key != "unsupported":
         workflow = QUERY_LIBRARY[query_key]
@@ -271,17 +332,6 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
             "suggested_questions": [],
         }
 
-    if any(word in text for word in ["age", "income", "gender", "salary", "customer demographic"]):
-        return {
-            "action": "unsupported",
-            "query_key": "unsupported",
-            "supervisor": "Deterministic supervisor",
-            "confidence": 0.8,
-            "reasoning": "The question requires fields that are not available in the current dataset.",
-            "user_message": "I cannot answer this from the current dataset because the required demographic fields are not available.",
-            "suggested_questions": DEFAULT_SUGGESTED_QUESTIONS,
-        }
-
     if any(phrase in text for phrase in ["don't know", "do not know", "how to analyze", "where should i start", "start", "what should i look", "usually analyze", "normally analyze", "analysis ideas"]):
         return {
             "action": "suggest_analysis_plan",
@@ -289,7 +339,10 @@ def deterministic_supervisor(question: str) -> dict[str, str | float]:
             "supervisor": "Deterministic supervisor",
             "confidence": 0.85,
             "reasoning": "The user is asking for guidance on how to begin analyzing the dataset.",
-            "user_message": "A good starting point is to first establish the cancellation baseline, then compare risk by city, platform, lead time, and high-risk booking segments.",
+            "user_message": (
+                "A practical 1-2 step path is: Step 1, establish the overall cancellation baseline. "
+                "Step 2, compare likely risk drivers such as city, platform, lead time, and high-risk booking segments."
+            ),
             "suggested_questions": DEFAULT_SUGGESTED_QUESTIONS,
         }
 
@@ -325,7 +378,7 @@ def extract_json_object(text: str) -> dict:
     return json.loads(match.group(0))
 
 
-def build_supervisor_prompt(question: str, metadata: str) -> str:
+def build_supervisor_prompt(question: str, metadata: str, columns: str) -> str:
     return f"""
 You are the supervisor agent inside a SQL-grounded AI Data Analyst Workbench.
 
@@ -343,14 +396,19 @@ Decision rules:
 1. Use action "run_workflow" when the question maps clearly to one existing workflow.
 2. Use action "suggest_analysis_plan" when the user asks how to analyze the data, where to start, what analysts usually check, or asks for analysis ideas.
 3. Use action "ask_clarification" when the user asks for broad business advice but does not specify whether they care about cancellations, pricing, platforms, lead time, or risky segments.
-4. Use action "unsupported" only when the question cannot be answered from the current dataset or asks for fields/workflows not available.
-5. Do not create new workflow keys.
-6. Do not write SQL.
-7. Do not invent data or findings.
-8. If action is not "run_workflow", set query_key to "unsupported" and provide helpful suggested questions.
+4. Use action "propose_new_analysis" when the user asks for a reasonable analysis that is not in the workflow library but appears feasible from the available columns.
+5. Use action "unsupported" only when the question cannot be answered from the current dataset or asks for fields/workflows not available.
+6. Do not create new workflow keys.
+7. Do not execute or claim results for proposed analyses.
+8. For propose_new_analysis, provide a draft SQL query using only {DATA_SQL_REFERENCE} and available columns. This SQL is for review only and will not be executed automatically.
+9. Do not invent data or findings.
+10. If action is not "run_workflow", set query_key to "unsupported" and provide helpful suggested questions or a proposed analysis.
 
 Workflow library:
 {metadata}
+
+Available dataset columns:
+{columns}
 
 User question:
 {question}
@@ -359,12 +417,18 @@ Return only valid JSON. Do not include markdown, comments, or extra text.
 
 JSON schema:
 {{
-  "action": "run_workflow | suggest_analysis_plan | ask_clarification | unsupported",
+  "action": "run_workflow | suggest_analysis_plan | ask_clarification | propose_new_analysis | unsupported",
   "query_key": "one workflow_key from the library if action is run_workflow, otherwise unsupported",
   "confidence": 0.0,
   "reasoning": "one short plain-English sentence",
   "user_message": "a helpful message to show the user",
-  "suggested_questions": ["3 to 5 concrete questions the user could ask next"]
+  "suggested_questions": ["3 to 5 concrete questions the user could ask next"],
+  "proposed_analysis": {{
+    "title": "short title for the proposed analysis",
+    "required_columns": ["columns needed for the proposed analysis"],
+    "draft_sql": "read-only draft SQL using the configured CSV source",
+    "status": "Proposed only. Not executed automatically."
+  }}
 }}
 """
 
@@ -386,7 +450,8 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         return fallback
 
     metadata = json.dumps(workflow_metadata(), indent=2)
-    prompt = build_supervisor_prompt(question, metadata)
+    columns = json.dumps(dataset_column_metadata(), indent=2)
+    prompt = build_supervisor_prompt(question, metadata, columns)
 
     try:
         client = genai.Client(api_key=api_key)
@@ -394,7 +459,7 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         response = client.models.generate_content(model=model_name, contents=prompt)
         decision = extract_json_object(response.text)
         action = decision.get("action", "ask_clarification")
-        if action not in {"run_workflow", "suggest_analysis_plan", "ask_clarification", "unsupported"}:
+        if action not in {"run_workflow", "suggest_analysis_plan", "ask_clarification", "propose_new_analysis", "unsupported"}:
             action = "ask_clarification"
 
         query_key = decision.get("query_key", "unsupported")
@@ -416,6 +481,7 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
             "reasoning": str(decision.get("reasoning", "Gemini selected this workflow.")),
             "user_message": str(decision.get("user_message", "")),
             "suggested_questions": [str(item) for item in suggested_questions[:5]],
+            "proposed_analysis": decision.get("proposed_analysis", {}),
         }
     except Exception as exc:
         fallback = deterministic_supervisor(question)
@@ -428,6 +494,92 @@ def supervisor_decision(question: str, mode: str) -> dict[str, str | float]:
     if mode == "Gemini supervisor (optional)":
         return gemini_supervisor(question)
     return deterministic_supervisor(question)
+
+
+def build_interpreter_prompt(question: str, workflow: dict, sql: str, result: pd.DataFrame, context: dict) -> str:
+    result_preview = result.head(20).to_dict(orient="records")
+    return f"""
+You are the interpreter agent inside a SQL-grounded AI Data Analyst Workbench.
+
+Product context:
+- The app is built for non-technical business stakeholders.
+- DuckDB has already executed a trusted SQL workflow.
+- You must explain only what is supported by the SQL result.
+- Do not invent numbers, columns, causes, or recommendations not grounded in the result.
+- Do not claim causality. Use cautious language such as "suggests", "is associated with", or "should be investigated".
+
+User question:
+{question}
+
+Selected workflow:
+{workflow["title"]} - {workflow["description"]}
+
+Data context:
+{json.dumps(context, indent=2)}
+
+SQL executed:
+{sql}
+
+Result preview:
+{json.dumps(result_preview, indent=2, default=str)}
+
+Return only valid JSON. Do not include markdown, comments, or extra text.
+
+JSON schema:
+{{
+  "interpretation": "2 to 4 plain-English sentences explaining the key insight from the result",
+  "next_steps": ["2 to 4 recommended follow-up analyses or business actions"],
+  "suggested_questions": ["2 to 4 concrete follow-up questions the user could ask next"]
+}}
+"""
+
+
+def gemini_interpret_result(question: str, query_key: str, sql: str, result: pd.DataFrame, context: dict) -> dict:
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return {
+            "interpretation": build_interpretation(query_key, result),
+            "next_steps": build_next_steps(query_key),
+            "suggested_questions": [],
+            "source": "Deterministic interpretation fallback",
+        }
+
+    try:
+        from google import genai
+    except ImportError:
+        return {
+            "interpretation": build_interpretation(query_key, result),
+            "next_steps": build_next_steps(query_key),
+            "suggested_questions": [],
+            "source": "Deterministic interpretation fallback",
+        }
+
+    try:
+        workflow = QUERY_LIBRARY[query_key]
+        prompt = build_interpreter_prompt(question, workflow, sql, result, context)
+        client = genai.Client(api_key=api_key)
+        model_name = get_gemini_model()
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        parsed = extract_json_object(response.text)
+        next_steps = parsed.get("next_steps", build_next_steps(query_key))
+        suggested_questions = parsed.get("suggested_questions", [])
+        if not isinstance(next_steps, list) or not next_steps:
+            next_steps = build_next_steps(query_key)
+        if not isinstance(suggested_questions, list):
+            suggested_questions = []
+        return {
+            "interpretation": str(parsed.get("interpretation") or build_interpretation(query_key, result)),
+            "next_steps": [str(item) for item in next_steps[:4]],
+            "suggested_questions": [str(item) for item in suggested_questions[:4]],
+            "source": f"Gemini interpreter ({model_name})",
+        }
+    except Exception as exc:
+        return {
+            "interpretation": build_interpretation(query_key, result),
+            "next_steps": build_next_steps(query_key),
+            "suggested_questions": [],
+            "source": f"Deterministic interpretation fallback: {exc}",
+        }
 
 
 def profile_dataset() -> pd.DataFrame:
@@ -585,7 +737,7 @@ def build_limitations(query_key: str) -> list[str]:
         ]
 
     return [
-        "This prototype uses the available columns in data.csv and does not infer causes beyond the observed data.",
+        f"This prototype uses the available columns in {DATA_SOURCE_NAME} and does not infer causes beyond the observed data.",
         "The workflow returns descriptive evidence, not a causal model.",
         "Results should be reviewed with business context before operational decisions are made.",
     ]
@@ -639,9 +791,9 @@ def build_data_context(query_key: str) -> dict:
     required_columns = QUERY_LIBRARY.get(query_key, {}).get("required_columns", [])
 
     return {
-        "data_source": "data.csv",
+        "data_source": DATA_SOURCE_NAME,
         "query_engine": "DuckDB",
-        "table_reference": "read_csv_auto('data.csv')",
+        "table_reference": DATA_SQL_REFERENCE,
         "dataset_domain": "Hotel booking records",
         "row_count": int(row_count),
         "column_count": len(profile),
@@ -657,11 +809,13 @@ def create_report_package(question: str, decision: dict[str, str | float]) -> di
         titles = {
             "suggest_analysis_plan": "Suggested Analysis Plan",
             "ask_clarification": "Clarification Needed",
+            "propose_new_analysis": "Proposed New Analysis",
             "unsupported": "Unsupported Question",
         }
         descriptions = {
             "suggest_analysis_plan": "The user asked for analysis guidance, so the supervisor suggested useful starting questions.",
             "ask_clarification": "The user request is broad, so the supervisor suggested clearer analytical directions.",
+            "propose_new_analysis": "The supervisor proposed a new analysis using available fields. The draft SQL is not executed automatically.",
             "unsupported": "The question cannot be answered from the current dataset or workflow coverage.",
         }
         return {
@@ -674,14 +828,28 @@ def create_report_package(question: str, decision: dict[str, str | float]) -> di
             "sql": "",
             "result": pd.DataFrame(),
             "interpretation": str(decision.get("user_message") or "No SQL workflow was run for this request."),
+            "interpretation_source": "Supervisor guidance",
             "data_context": build_data_context(query_key),
             "limitations": build_limitations(query_key),
             "next_steps": build_next_steps(query_key),
             "suggested_questions": decision.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS),
+            "proposed_analysis": decision.get("proposed_analysis", {}),
         }
 
     query = QUERY_LIBRARY[query_key]
     result = run_sql(query["sql"])
+    sql = query["sql"].strip()
+    context = build_data_context(query_key)
+    if str(decision.get("supervisor", "")).startswith("Gemini supervisor"):
+        insight = gemini_interpret_result(question, query_key, sql, result, context)
+    else:
+        insight = {
+            "interpretation": build_interpretation(query_key, result),
+            "next_steps": build_next_steps(query_key),
+            "suggested_questions": decision.get("suggested_questions", []),
+            "source": "Deterministic interpretation",
+        }
+
     return {
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "question": question,
@@ -689,13 +857,14 @@ def create_report_package(question: str, decision: dict[str, str | float]) -> di
         "query_key": query_key,
         "workflow_title": query["title"],
         "workflow_description": query["description"],
-        "sql": query["sql"].strip(),
+        "sql": sql,
         "result": result,
-        "interpretation": build_interpretation(query_key, result),
-        "data_context": build_data_context(query_key),
+        "interpretation": insight["interpretation"],
+        "interpretation_source": insight["source"],
+        "data_context": context,
         "limitations": build_limitations(query_key),
-        "next_steps": build_next_steps(query_key),
-        "suggested_questions": decision.get("suggested_questions", []),
+        "next_steps": insight["next_steps"],
+        "suggested_questions": insight["suggested_questions"],
     }
 
 
@@ -797,6 +966,7 @@ def build_report_html(report: dict) -> str:
   </div>
 
   <h2>Key Finding</h2>
+  <p><strong>Interpretation source:</strong> {html.escape(str(report.get("interpretation_source", "Unknown")))}</p>
   <div class="finding">{html.escape(report["interpretation"])}</div>
 
   <h2>SQL Evidence</h2>
@@ -844,7 +1014,22 @@ def render_report(report: dict) -> None:
     result = report["result"]
 
     if report["decision"].get("action", "run_workflow") != "run_workflow" or query_key == "unsupported":
+        st.caption(f"Interpretation source: {report.get('interpretation_source', 'Supervisor guidance')}")
         st.info(report["interpretation"])
+        if report["decision"].get("action") == "suggest_analysis_plan":
+            st.write("Suggested 1-2 step path:")
+            st.write("1. Establish the baseline with an overview metric.")
+            st.write("2. Compare the most likely drivers or segments.")
+        if report["decision"].get("action") == "propose_new_analysis":
+            proposal = report.get("proposed_analysis", {})
+            st.write("Proposed analysis:")
+            st.write(f"**Title:** {proposal.get('title', 'Untitled proposed analysis')}")
+            required_columns = proposal.get("required_columns", [])
+            if required_columns:
+                st.write("**Fields needed:** " + ", ".join(str(column) for column in required_columns))
+            st.warning(proposal.get("status", "Proposed only. Not executed automatically."))
+            with st.expander("Draft SQL for review"):
+                st.code(proposal.get("draft_sql", "No draft SQL was generated."), language="sql")
         suggestions = report.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS)
         if suggestions:
             st.write("Suggested questions to try next:")
@@ -862,6 +1047,7 @@ def render_report(report: dict) -> None:
         col3.metric("Cancellation Rate", f"{row['cancellation_rate_pct']}%")
         col4.metric("Average ADR", f"{row['avg_adr']}")
 
+    st.caption(f"Interpretation source: {report.get('interpretation_source', 'Unknown')}")
     st.info(report["interpretation"])
     st.dataframe(result, use_container_width=True)
 
@@ -915,7 +1101,7 @@ st.title("AI Data Analyst Workbench (Prototype)")
 st.caption("A local DuckDB-powered analysis workflow for non-technical stakeholders.")
 
 if not DATA_PATH.exists():
-    st.error("data.csv was not found. Please place it in the ai_analyst_agent folder and refresh the app.")
+    st.error("No dataset was found. Add data.csv for local analysis or sample_data.csv for a public demo.")
     st.stop()
 
 if "messages" not in st.session_state:
@@ -929,7 +1115,7 @@ with st.sidebar:
     st.subheader("Data Source")
     data_source_mode = st.radio("Source mode", ["Local CSV demo", "Company database preview"])
     if data_source_mode == "Local CSV demo":
-        st.write("Data source: `data.csv`")
+        st.write(f"Data source: `{DATA_SOURCE_NAME}`")
         st.caption("Domain: hotel booking records")
     else:
         st.write("Status: preview only")
@@ -1054,6 +1240,7 @@ with report_tab:
         st.write(f"**Question:** {latest_report['question']}")
         st.write(f"**Workflow:** {latest_report['workflow_title']}")
         st.write(f"**Supervisor:** {latest_report['decision'].get('supervisor')}")
+        st.write(f"**Interpretation source:** {latest_report.get('interpretation_source', 'Unknown')}")
         st.info(latest_report["interpretation"])
 
         context = latest_report["data_context"]
