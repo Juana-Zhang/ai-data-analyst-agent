@@ -1129,6 +1129,10 @@ st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
 
 st.title("AI Data Analyst Workbench (Prototype)")
 st.caption("A local DuckDB-powered analysis workflow for non-technical stakeholders.")
+st.markdown(
+    "Built by **Nuonan (Juana) Zhang** · "
+    "[LinkedIn](https://www.linkedin.com/in/juanazhang/)"
+)
 
 if not DATA_PATH.exists():
     st.error("No dataset was found. Add data.csv for local analysis or sample_data.csv for a public demo.")
