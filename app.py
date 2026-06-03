@@ -1009,6 +1009,34 @@ def is_downloadable_report(report: dict) -> bool:
     )
 
 
+def submit_question(question: str, supervisor_mode: str) -> None:
+    decision = supervisor_decision(question, supervisor_mode)
+    report = create_report_package(question, decision)
+    if is_downloadable_report(report):
+        st.session_state.latest_report = report
+    st.session_state.messages.append({"role": "user", "content": question})
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "query_key": decision["query_key"],
+            "decision": decision,
+            "report": report,
+        }
+    )
+
+
+def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: str, key_prefix: str) -> None:
+    if not suggestions:
+        return
+
+    st.write("Suggested questions to try next:")
+    for index, item in enumerate(suggestions):
+        question = str(item)
+        if st.button(question, key=f"{key_prefix}_{index}", use_container_width=True):
+            submit_question(question, supervisor_mode)
+            st.rerun()
+
+
 def render_report(report: dict) -> None:
     query_key = report["query_key"]
     result = report["result"]
@@ -1032,9 +1060,11 @@ def render_report(report: dict) -> None:
                 st.code(proposal.get("draft_sql", "No draft SQL was generated."), language="sql")
         suggestions = report.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS)
         if suggestions:
-            st.write("Suggested questions to try next:")
-            for item in suggestions:
-                st.write(f"- {item}")
+            render_suggested_question_buttons(
+                suggestions,
+                st.session_state.get("supervisor_mode", SUPERVISOR_MODES[0]),
+                f"suggested_{id(report)}",
+            )
         return
 
     st.caption(report["workflow_description"])
@@ -1124,22 +1154,11 @@ with st.sidebar:
     st.divider()
     st.subheader("Supervisor")
     supervisor_mode = st.radio("Supervisor mode", SUPERVISOR_MODES)
+    st.session_state.supervisor_mode = supervisor_mode
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
-        decision = supervisor_decision(selected_question, supervisor_mode)
-        report = create_report_package(selected_question, decision)
-        if is_downloadable_report(report):
-            st.session_state.latest_report = report
-        st.session_state.messages.append({"role": "user", "content": selected_question})
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "query_key": decision["query_key"],
-                "decision": decision,
-                "report": report,
-            }
-        )
+        submit_question(selected_question, supervisor_mode)
 
     st.divider()
     st.subheader("Supervisor Layer")
@@ -1189,20 +1208,7 @@ with overview_tab:
     prompt = st.chat_input("Ask your data...", key="week2_prompt")
 
     if prompt:
-        decision = supervisor_decision(prompt, supervisor_mode)
-        report = create_report_package(prompt, decision)
-        if is_downloadable_report(report):
-            st.session_state.latest_report = report
-
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "query_key": decision["query_key"],
-                "decision": decision,
-                "report": report,
-            }
-        )
+        submit_question(prompt, supervisor_mode)
         st.rerun()
 
 with profile_tab:
