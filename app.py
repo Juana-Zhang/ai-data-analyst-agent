@@ -883,6 +883,11 @@ def build_report_html(report: dict) -> str:
     suggested_questions_html = "".join(
         f"<li>{html.escape(str(item))}</li>" for item in report.get("suggested_questions", [])
     )
+    suggested_questions_section = (
+        f"<h2>Suggested Questions</h2>\n  <ul>{suggested_questions_html}</ul>"
+        if suggested_questions_html
+        else ""
+    )
     context = report["data_context"]
     fields_used = context["fields_used"] or ["No workflow fields were selected."]
     fields_used_html = "".join(f"<li>{html.escape(str(item))}</li>" for item in fields_used)
@@ -984,8 +989,7 @@ def build_report_html(report: dict) -> str:
   <h2>Recommended Next Steps</h2>
   <ul>{next_steps_html}</ul>
 
-  <h2>Suggested Questions</h2>
-  <ul>{suggested_questions_html or "<li>No suggested questions were generated.</li>"}</ul>
+  {suggested_questions_section}
 </body>
 </html>
 """
@@ -1128,6 +1132,43 @@ def render_result(query_key: str) -> None:
         st.bar_chart(chart_data)
 
 
+def render_latest_report_section() -> None:
+    st.subheader("Generated Report")
+    latest_report = st.session_state.latest_report
+    if latest_report:
+        st.write(f"**Question:** {latest_report['question']}")
+        st.write(f"**Workflow:** {latest_report['workflow_title']}")
+        st.write(f"**Analysis mode:** {latest_report['decision'].get('supervisor')}")
+        st.write(f"**Interpretation source:** {latest_report.get('interpretation_source', 'Unknown')}")
+        st.info(latest_report["interpretation"])
+
+        context = latest_report["data_context"]
+        st.write("**Data context**")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Rows analyzed", f"{context['row_count']:,}")
+        col2.metric("Columns available", context["column_count"])
+        col3.metric("Query engine", context["query_engine"])
+        st.write(f"**Data source:** `{context['data_source']}`")
+        st.write(f"**Table reference:** `{context['table_reference']}`")
+        st.write("**Fields used by this workflow:**")
+        st.write(", ".join(context["fields_used"]) if context["fields_used"] else "No workflow fields were selected.")
+
+        with st.expander("Report SQL evidence"):
+            st.code(latest_report["sql"] or "No SQL executed.", language="sql")
+
+        st.write("**Limitations**")
+        for item in latest_report["limitations"]:
+            st.write(f"- {item}")
+
+        st.write("**Recommended next steps**")
+        for item in latest_report["next_steps"]:
+            st.write(f"- {item}")
+
+        render_download_button(latest_report, key="download_latest_report")
+    else:
+        st.write("Run an analysis in the Ask Data tab to generate a downloadable executive report.")
+
+
 st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
 
 st.title("AI Data Analyst Workbench")
@@ -1254,43 +1295,6 @@ with library_tab:
     )
 
 with report_tab:
-    st.subheader("Latest Executive Report")
-    latest_report = st.session_state.latest_report
-    if latest_report:
-        st.write(f"**Question:** {latest_report['question']}")
-        st.write(f"**Workflow:** {latest_report['workflow_title']}")
-        st.write(f"**Analysis mode:** {latest_report['decision'].get('supervisor')}")
-        st.write(f"**Interpretation source:** {latest_report.get('interpretation_source', 'Unknown')}")
-        st.info(latest_report["interpretation"])
-
-        context = latest_report["data_context"]
-        st.write("**Data context**")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Rows analyzed", f"{context['row_count']:,}")
-        col2.metric("Columns available", context["column_count"])
-        col3.metric("Query engine", context["query_engine"])
-        st.write(f"**Data source:** `{context['data_source']}`")
-        st.write(f"**Table reference:** `{context['table_reference']}`")
-        st.write("**Fields used by this workflow:**")
-        st.write(", ".join(context["fields_used"]) if context["fields_used"] else "No workflow fields were selected.")
-
-        with st.expander("Report SQL evidence"):
-            st.code(latest_report["sql"] or "No SQL executed.", language="sql")
-
-        st.write("**Limitations**")
-        for item in latest_report["limitations"]:
-            st.write(f"- {item}")
-
-        st.write("**Recommended next steps**")
-        for item in latest_report["next_steps"]:
-            st.write(f"- {item}")
-
-        render_download_button(latest_report, key="download_latest_report")
-    else:
-        st.write("Run an analysis in the Ask Data tab to generate a downloadable executive report.")
-
-    st.divider()
-
     st.subheader("Project Goal")
     st.write(
         "This project demonstrates how AI can support repetitive, structured analytics work for "
@@ -1486,3 +1490,6 @@ with report_tab:
         "- DuckDB-based local analytics and transparent evidence generation\n"
         "- Executive reporting UX for decision support"
     )
+
+    st.divider()
+    render_latest_report_section()
