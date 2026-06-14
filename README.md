@@ -103,6 +103,34 @@ The current demo includes a workflow library for one sample business domain:
 
 These workflows are examples of how an analyst can encode repeatable business logic. A different company or domain would replace this library with its own metric definitions and SQL frameworks.
 
+## Implementation Details
+
+The app is intentionally built as a lightweight prototype in a single Python Streamlit app:
+
+| Layer | Implementation |
+| --- | --- |
+| User interface | Streamlit tabs, sidebar controls, chat input, dataframes, metrics, and download buttons |
+| Data engine | DuckDB queries CSV-backed data directly with SQL |
+| Workflow library | Python dictionary of trusted analysis workflows, each with a title, description, required columns, and predefined SQL |
+| Rule-based Mode | Keyword-based routing for clear, repetitive stakeholder questions |
+| Guided AI Mode | Gemini call that returns a structured JSON decision: run workflow, suggest analysis plan, ask clarification, propose new analysis, or unsupported |
+| Result interpretation | Gemini can summarize approved SQL results; when unavailable, the app falls back to rule-based interpretations |
+| Reporting | Python-generated HTML report with data context, SQL evidence, interpretation, limitations, and next steps |
+
+The build process started from a simple Streamlit + DuckDB prototype, then evolved into a governed workflow library, two analysis modes, schema-aware AI routing, SQL evidence display, and downloadable executive reports. I used Codex as a coding assistant to accelerate implementation, while the product flow, analysis framework, prompt constraints, and guardrail logic were designed and reviewed iteratively by me.
+
+## Security And Privacy
+
+This repo is designed so the public demo can be shared without exposing private data or API keys:
+
+- `data.csv` is ignored by git and used only for local/private analysis.
+- `sample_data.csv` is synthetic and safe to commit for the public demo.
+- `.streamlit/secrets.toml` is ignored by git and should contain local secrets only.
+- `.streamlit/secrets.toml.example` is committed as a template with placeholder values.
+- Streamlit Community Cloud secrets should be used for deployed Gemini credentials.
+- The app can run without a Gemini key by using Rule-based Mode and safe fallback behavior.
+- Guided AI Mode can suggest analysis paths or proposed SQL, but the app only executes approved workflow SQL.
+
 ## Tech Stack
 
 - Python

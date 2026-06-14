@@ -159,6 +159,24 @@ Every completed SQL analysis can produce an HTML report with:
 - next steps
 - suggested questions
 
+### Security And Secrets
+
+The prototype separates public demo assets from private runtime configuration:
+
+- `sample_data.csv` is synthetic and can be deployed publicly.
+- `data.csv` is treated as local/private data and is excluded from git.
+- Gemini credentials are read from Streamlit secrets or environment variables.
+- `.streamlit/secrets.toml` is excluded from git.
+- `.streamlit/secrets.toml.example` is committed only as a setup template.
+
+The AI layer is also constrained at runtime:
+
+- It receives workflow metadata and schema context, not unrestricted database access.
+- It must return a structured action rather than arbitrary executable code.
+- Unknown workflow keys are rejected.
+- Non-workflow actions do not execute SQL.
+- Proposed new analyses are shown for review only and are not automatically executed.
+
 ## Why This Design
 
 This design avoids the biggest risk of general-purpose data chatbots: unsupported or hallucinated answers.
