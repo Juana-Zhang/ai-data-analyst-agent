@@ -1130,8 +1130,8 @@ def render_result(query_key: str) -> None:
 
 st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
 
-st.title("AI Data Analyst Workbench (Prototype)")
-st.caption("A local DuckDB-powered analysis workflow for non-technical stakeholders.")
+st.title("AI Data Analyst Workbench")
+st.caption("Governed AI workflow for stakeholder self-service analytics.")
 st.markdown(
     "**Built by Nuonan (Juana) Zhang** · "
     "LinkedIn: [www.linkedin.com/in/juanazhang](https://www.linkedin.com/in/juanazhang/) · "
@@ -1139,10 +1139,9 @@ st.markdown(
 )
 st.info(
     "**How to use this demo**\n\n"
-    "Use **Guided AI Mode** for exploratory questions or when you are unsure where to start. "
-    "Use **Rule-based Mode** to run trusted predefined analyses with stable SQL evidence.\n\n"
-    "Ask a business question in the chat box, review the selected workflow and SQL evidence, "
-    "then download an HTML report when a trusted analysis runs."
+    "1. Use **Rule-based Mode** for structured, recurring stakeholder questions.\n\n"
+    "2. Use **Guided AI Mode** for exploratory questions, onboarding, or unclear analysis needs.\n\n"
+    "3. Review SQL evidence and download an executive report after an approved workflow runs."
 )
 
 if not DATA_PATH.exists():
