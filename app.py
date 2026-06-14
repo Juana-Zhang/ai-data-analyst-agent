@@ -1307,32 +1307,110 @@ with report_tab:
     )
 
     st.subheader("Build Approach")
-    flow_steps = [
-        ("1", "Sample domain dataset", "Use one business domain dataset to demonstrate the pattern."),
-        ("2", "Schema and metric understanding", "Inspect available fields and define what can be answered safely."),
-        ("3", "Analyst-defined framework", "Pre-design reusable data extraction logic and analysis workflows."),
-        ("4", "AI routing layer", "Use AI to clarify intent, suggest paths, or select trusted workflows."),
-        ("5", "Approved SQL execution", "Run only governed SQL through DuckDB and expose the evidence."),
-        ("6", "Report-ready output", "Return interpretation, limitations, next steps, and downloadable reports."),
-    ]
-
-    columns = st.columns(3)
-    for index, (step, title, detail) in enumerate(flow_steps):
-        with columns[index % 3]:
-            st.markdown(f"**{step}. {title}**")
-            st.caption(detail)
-
     st.markdown(
         """
-        ```text
-        Stakeholder question
-        -> analyst-defined SQL and metric framework
-        -> workflow library
-        -> AI routing and clarification
-        -> approved DuckDB execution
-        -> SQL evidence + executive report
-        ```
-        """
+        <style>
+          .workflow-frame {
+            border: 1px solid rgba(120, 128, 140, 0.28);
+            border-radius: 8px;
+            padding: 18px;
+            margin: 10px 0 22px;
+            background: rgba(148, 163, 184, 0.08);
+          }
+          .workflow-row {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+            align-items: stretch;
+          }
+          .workflow-card {
+            border: 1px solid rgba(120, 128, 140, 0.28);
+            border-radius: 8px;
+            padding: 12px;
+            min-height: 116px;
+            background: rgba(255, 255, 255, 0.04);
+          }
+          .workflow-kicker {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+          }
+          .workflow-title {
+            font-size: 15px;
+            font-weight: 750;
+            margin-top: 6px;
+          }
+          .workflow-copy {
+            color: #94a3b8;
+            font-size: 13px;
+            line-height: 1.45;
+            margin-top: 8px;
+          }
+          .workflow-arrow {
+            color: #ef4444;
+            font-weight: 800;
+          }
+          .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+          }
+          .mode-card {
+            border: 1px solid rgba(120, 128, 140, 0.28);
+            border-radius: 8px;
+            padding: 14px;
+            background: rgba(15, 23, 42, 0.04);
+          }
+          @media (max-width: 900px) {
+            .workflow-row, .mode-grid {
+              grid-template-columns: 1fr;
+            }
+          }
+        </style>
+        <div class="workflow-frame">
+          <div class="workflow-row">
+            <div class="workflow-card">
+              <div class="workflow-kicker">Step 1</div>
+              <div class="workflow-title">Sample domain data</div>
+              <div class="workflow-copy">Use a synthetic dataset to demonstrate the pattern without exposing private data.</div>
+            </div>
+            <div class="workflow-card">
+              <div class="workflow-kicker">Step 2</div>
+              <div class="workflow-title">Schema + metric understanding</div>
+              <div class="workflow-copy">Inspect available fields and define what questions can be answered safely.</div>
+            </div>
+            <div class="workflow-card">
+              <div class="workflow-kicker">Step 3</div>
+              <div class="workflow-title">Analyst-defined framework</div>
+              <div class="workflow-copy">Pre-design reusable SQL, metric logic, and analysis workflows before adding AI.</div>
+            </div>
+            <div class="workflow-card">
+              <div class="workflow-kicker">Step 4</div>
+              <div class="workflow-title">AI routing layer</div>
+              <div class="workflow-copy">Clarify intent, suggest paths, or route questions to trusted workflows.</div>
+            </div>
+            <div class="workflow-card">
+              <div class="workflow-kicker">Step 5</div>
+              <div class="workflow-title">Evidence + report</div>
+              <div class="workflow-copy">DuckDB runs approved SQL and returns interpretation, limitations, and report output.</div>
+            </div>
+          </div>
+          <div class="mode-grid">
+            <div class="mode-card">
+              <div class="workflow-title">Rule-based Mode</div>
+              <div class="workflow-copy">For structured, recurring stakeholder questions. Routes directly to predefined SQL workflows.</div>
+            </div>
+            <div class="mode-card">
+              <div class="workflow-title">Guided AI Mode</div>
+              <div class="workflow-copy">For onboarding, vague questions, or exploratory needs. AI helps users choose a safe path.</div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.subheader("Analysis Modes")
