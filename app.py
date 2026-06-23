@@ -4,6 +4,10 @@ import html
 import json
 import os
 import re
+import time
+import urllib.error
+import urllib.request
+import uuid
 
 import duckdb
 import pandas as pd
@@ -382,6 +386,13 @@ def get_ga4_measurement_id() -> str | None:
         return os.getenv("GA4_MEASUREMENT_ID")
 
 
+def get_ga4_api_secret() -> str | None:
+    try:
+        return st.secrets.get("GA4_API_SECRET") or os.getenv("GA4_API_SECRET")
+    except Exception:
+        return os.getenv("GA4_API_SECRET")
+
+
 def render_ga4_tracking() -> None:
     measurement_id = get_ga4_measurement_id()
     if not measurement_id:
@@ -416,6 +427,63 @@ def render_ga4_tracking() -> None:
         height=1,
         width=1,
     )
+
+
+def send_ga4_server_page_view() -> None:
+    measurement_id = get_ga4_measurement_id()
+    api_secret = get_ga4_api_secret()
+    if not measurement_id or not api_secret:
+        return
+
+    if st.query_params.get("keepalive"):
+        return
+
+    if st.session_state.get("ga4_server_page_view_sent"):
+        return
+
+    if "ga4_client_id" not in st.session_state:
+        st.session_state["ga4_client_id"] = str(uuid.uuid4())
+    if "ga4_session_id" not in st.session_state:
+        st.session_state["ga4_session_id"] = str(int(time.time()))
+
+    payload = {
+        "client_id": st.session_state["ga4_client_id"],
+        "events": [
+            {
+                "name": "page_view",
+                "params": {
+                    "page_title": "AI Data Analyst Workbench",
+                    "page_location": "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/",
+                    "page_path": "/",
+                    "session_id": st.session_state["ga4_session_id"],
+                    "engagement_time_msec": 100,
+                },
+            },
+            {
+                "name": "streamlit_app_opened",
+                "params": {
+                    "session_id": st.session_state["ga4_session_id"],
+                    "engagement_time_msec": 100,
+                },
+            },
+        ],
+    }
+    url = (
+        "https://www.google-analytics.com/mp/collect"
+        f"?measurement_id={measurement_id}&api_secret={api_secret}"
+    )
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=3):
+            st.session_state["ga4_server_page_view_sent"] = True
+    except (urllib.error.URLError, TimeoutError, OSError):
+        st.session_state["ga4_server_page_view_sent"] = False
 
 
 def extract_json_object(text: str) -> dict:
@@ -1215,6 +1283,7 @@ def render_latest_report_section() -> None:
 
 st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
 render_ga4_tracking()
+send_ga4_server_page_view()
 
 st.title("AI Data Analyst Workbench")
 st.caption("Governed AI workflow for stakeholder self-service analytics.")

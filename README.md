@@ -180,6 +180,7 @@ Then edit `.streamlit/secrets.toml`:
 GEMINI_API_KEY = "your_api_key_here"
 GEMINI_MODEL = "gemini-2.5-flash"
 GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
+GA4_API_SECRET = "your_ga4_measurement_protocol_secret"
 ```
 
 Run the app:
@@ -196,23 +197,25 @@ You can share this project with others by deploying it to Streamlit Community Cl
 2. Make sure `sample_data.csv` is included and `data.csv` is not included.
 3. Create a new Streamlit app from the GitHub repository.
 4. Set the main file path to `app.py`.
-5. Optional: add `GEMINI_API_KEY`, `GEMINI_MODEL`, and `GA4_MEASUREMENT_ID` in Streamlit Cloud secrets.
+5. Optional: add `GEMINI_API_KEY`, `GEMINI_MODEL`, `GA4_MEASUREMENT_ID`, and `GA4_API_SECRET` in Streamlit Cloud secrets.
 
 The deployed app will use `sample_data.csv` by default, so recruiters and reviewers can open a public URL without needing your local machine, private dataset, or local API key file.
 
 ## Visitor Tracking
 
-The app supports optional Google Analytics 4 tracking for the public demo. To enable it:
+The app supports optional Google Analytics 4 tracking for the public demo. Because Streamlit Cloud renders the app inside iframes, browser-side GA tags can be unreliable. For more reliable visitor tracking, use the optional server-side GA4 Measurement Protocol setup:
 
 1. Create a GA4 web data stream.
 2. Copy the measurement ID, which looks like `G-XXXXXXXXXX`.
-3. Add it to Streamlit Cloud secrets:
+3. In the same GA4 web stream, create a Measurement Protocol API secret.
+4. Add both values to Streamlit Cloud secrets:
 
 ```toml
 GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
+GA4_API_SECRET = "your_ga4_measurement_protocol_secret"
 ```
 
-GA4 can help estimate visits, traffic sources, countries, devices, and engagement time. Treat these numbers as directional because ad blockers, browser privacy settings, and uptime-monitor pings may affect tracking.
+The app sends one server-side `page_view` event per Streamlit session and skips GitHub keepalive pings. GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 
 ## Portfolio Positioning
 
