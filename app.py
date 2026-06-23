@@ -391,20 +391,30 @@ def render_ga4_tracking() -> None:
     components.html(
         f"""
         <!-- Google tag (gtag.js) -->
+        <div style="width:1px;height:1px;overflow:hidden;opacity:0;" aria-hidden="true"></div>
         <script async src="https://www.googletagmanager.com/gtag/js?id={safe_measurement_id}"></script>
         <script>
           window.dataLayer = window.dataLayer || [];
           function gtag(){{dataLayer.push(arguments);}}
+
+          const pageLocation = document.referrer || window.location.href;
           gtag('js', new Date());
           gtag('config', '{safe_measurement_id}', {{
             page_title: 'AI Data Analyst Workbench',
+            page_location: pageLocation,
             page_path: '/',
+            transport_type: 'beacon',
             send_page_view: true
+          }});
+          gtag('event', 'streamlit_app_opened', {{
+            event_category: 'engagement',
+            event_label: 'AI Data Analyst Workbench',
+            transport_type: 'beacon'
           }});
         </script>
         """,
-        height=0,
-        width=0,
+        height=1,
+        width=1,
     )
 
 
