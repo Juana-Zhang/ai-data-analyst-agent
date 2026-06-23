@@ -116,6 +116,7 @@ The app is intentionally built as a lightweight prototype in a single Python Str
 | Guided AI Mode | Gemini call that returns a structured JSON decision: run workflow, suggest analysis plan, ask clarification, propose new analysis, or unsupported |
 | Result interpretation | Gemini can summarize approved SQL results; when unavailable, the app falls back to rule-based interpretations |
 | Reporting | Python-generated HTML report with data context, SQL evidence, interpretation, limitations, and next steps |
+| Public demo analytics | Optional Google Analytics 4 tracking through `GA4_MEASUREMENT_ID` |
 
 The build process started from a simple Streamlit + DuckDB prototype, then evolved into a governed workflow library, two analysis modes, schema-aware AI routing, SQL evidence display, and downloadable executive reports. I used Codex as a coding assistant to accelerate implementation, while the product flow, analysis framework, prompt constraints, and guardrail logic were designed and reviewed iteratively by me.
 
@@ -128,6 +129,7 @@ This repo is designed so the public demo can be shared without exposing private 
 - `.streamlit/secrets.toml` is ignored by git and should contain local secrets only.
 - `.streamlit/secrets.toml.example` is committed as a template with placeholder values.
 - Streamlit Community Cloud secrets should be used for deployed Gemini credentials.
+- Optional GA4 tracking uses `GA4_MEASUREMENT_ID` in Streamlit Secrets; the measurement ID is not hardcoded in the app.
 - The app can run without a Gemini key by using Rule-based Mode and safe fallback behavior.
 - Guided AI Mode can suggest analysis paths or proposed SQL, but the app only executes approved workflow SQL.
 
@@ -177,6 +179,7 @@ Then edit `.streamlit/secrets.toml`:
 ```toml
 GEMINI_API_KEY = "your_api_key_here"
 GEMINI_MODEL = "gemini-2.5-flash"
+GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
 ```
 
 Run the app:
@@ -193,9 +196,23 @@ You can share this project with others by deploying it to Streamlit Community Cl
 2. Make sure `sample_data.csv` is included and `data.csv` is not included.
 3. Create a new Streamlit app from the GitHub repository.
 4. Set the main file path to `app.py`.
-5. Optional: add `GEMINI_API_KEY` and `GEMINI_MODEL` in Streamlit Cloud secrets.
+5. Optional: add `GEMINI_API_KEY`, `GEMINI_MODEL`, and `GA4_MEASUREMENT_ID` in Streamlit Cloud secrets.
 
 The deployed app will use `sample_data.csv` by default, so recruiters and reviewers can open a public URL without needing your local machine, private dataset, or local API key file.
+
+## Visitor Tracking
+
+The app supports optional Google Analytics 4 tracking for the public demo. To enable it:
+
+1. Create a GA4 web data stream.
+2. Copy the measurement ID, which looks like `G-XXXXXXXXXX`.
+3. Add it to Streamlit Cloud secrets:
+
+```toml
+GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
+```
+
+GA4 can help estimate visits, traffic sources, countries, devices, and engagement time. Treat these numbers as directional because ad blockers, browser privacy settings, and uptime-monitor pings may affect tracking.
 
 ## Portfolio Positioning
 

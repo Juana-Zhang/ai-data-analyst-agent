@@ -8,6 +8,7 @@ import re
 import duckdb
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 LOCAL_DATA_PATH = Path("data.csv")
@@ -372,6 +373,39 @@ def get_gemini_model() -> str:
         return st.secrets.get("GEMINI_MODEL") or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     except Exception:
         return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def get_ga4_measurement_id() -> str | None:
+    try:
+        return st.secrets.get("GA4_MEASUREMENT_ID") or os.getenv("GA4_MEASUREMENT_ID")
+    except Exception:
+        return os.getenv("GA4_MEASUREMENT_ID")
+
+
+def render_ga4_tracking() -> None:
+    measurement_id = get_ga4_measurement_id()
+    if not measurement_id:
+        return
+
+    safe_measurement_id = html.escape(measurement_id, quote=True)
+    components.html(
+        f"""
+        <!-- Google tag (gtag.js) -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id={safe_measurement_id}"></script>
+        <script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){{dataLayer.push(arguments);}}
+          gtag('js', new Date());
+          gtag('config', '{safe_measurement_id}', {{
+            page_title: 'AI Data Analyst Workbench',
+            page_path: '/',
+            send_page_view: true
+          }});
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
 
 def extract_json_object(text: str) -> dict:
@@ -1170,6 +1204,7 @@ def render_latest_report_section() -> None:
 
 
 st.set_page_config(page_title="AI Data Analyst Workbench", layout="wide")
+render_ga4_tracking()
 
 st.title("AI Data Analyst Workbench")
 st.caption("Governed AI workflow for stakeholder self-service analytics.")
