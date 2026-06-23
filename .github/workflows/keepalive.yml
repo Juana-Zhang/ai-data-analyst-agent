@@ -1,0 +1,16 @@
+name: Keep Streamlit Demo Warm
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping deployed Streamlit app
+        run: |
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/?keepalive=github-actions"
