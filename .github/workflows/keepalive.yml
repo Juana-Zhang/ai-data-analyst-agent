@@ -12,5 +12,5 @@ jobs:
     steps:
       - name: Ping deployed Streamlit app
         run: |
-          curl --fail --silent --show-error --location --max-time 30 \
-            "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/?keepalive=github-actions"
+          curl --fail --silent --show-error --max-time 60 \
+            "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/~/+/?keepalive=github-actions"
