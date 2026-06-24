@@ -1395,22 +1395,11 @@ with st.sidebar:
     else:
         st.caption("Future pattern: ask questions from Slack or Teams and receive report links.")
 
-nav_choice = st.radio(
-    "Navigation",
-    ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"],
-    horizontal=True,
-    label_visibility="collapsed",
+overview_tab, profile_tab, library_tab, report_tab = st.tabs(
+    ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"]
 )
 
-nav_event_names = {
-    "Ask Data": "ask_data_viewed",
-    "Dataset Profile": "dataset_profile_viewed",
-    "Workflow Library": "workflow_library_viewed",
-    "Executive Brief": "executive_brief_viewed",
-}
-send_ga4_event(nav_event_names[nav_choice], once_key=f"ga4_{nav_event_names[nav_choice]}")
-
-if nav_choice == "Ask Data":
+with overview_tab:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "user":
@@ -1442,7 +1431,7 @@ if nav_choice == "Ask Data":
         submit_question(prompt, supervisor_mode)
         st.rerun()
 
-if nav_choice == "Dataset Profile":
+with profile_tab:
     st.subheader("Dataset Schema")
     st.dataframe(profile_dataset(), use_container_width=True)
 
@@ -1455,7 +1444,7 @@ if nav_choice == "Dataset Profile":
     st.subheader("Preview")
     render_result("sample_rows")
 
-if nav_choice == "Workflow Library":
+with library_tab:
     st.subheader("Supported Analysis Workflows")
     st.write(
         "Each workflow is a trusted SQL framework with declared required columns. "
@@ -1470,7 +1459,7 @@ if nav_choice == "Workflow Library":
         "the limitation or guides the user toward concrete analysis questions instead of forcing an unreliable answer."
     )
 
-if nav_choice == "Executive Brief":
+with report_tab:
     st.subheader("Project Goal")
     st.write(
         "This project demonstrates how AI can support repetitive, structured analytics work for "
