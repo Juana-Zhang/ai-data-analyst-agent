@@ -215,7 +215,19 @@ GA4_MEASUREMENT_ID = "G-XXXXXXXXXX"
 GA4_API_SECRET = "your_ga4_measurement_protocol_secret"
 ```
 
-The app sends one server-side `page_view` event per Streamlit session and skips GitHub keepalive pings. GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
+The app sends one server-side `page_view` event per Streamlit session and skips GitHub keepalive pings. It also tracks product usage events such as:
+
+- `ask_data_viewed`
+- `dataset_profile_viewed`
+- `workflow_library_viewed`
+- `executive_brief_viewed`
+- `analysis_question_submitted`
+- `analysis_workflow_run`
+- `guided_ai_mode_used`
+- `new_analysis_proposed`
+- `html_report_downloaded`
+
+GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 
 ## Portfolio Positioning
 

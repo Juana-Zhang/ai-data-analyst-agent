@@ -6,6 +6,7 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -429,49 +430,41 @@ def render_ga4_tracking() -> None:
     )
 
 
-def send_ga4_server_page_view() -> None:
+def send_ga4_event(event_name: str, params: dict | None = None, once_key: str | None = None) -> bool:
     measurement_id = get_ga4_measurement_id()
     api_secret = get_ga4_api_secret()
     if not measurement_id or not api_secret:
-        return
+        return False
 
     if st.query_params.get("keepalive"):
-        return
+        return False
 
-    if st.session_state.get("ga4_server_page_view_sent"):
-        return
+    if once_key and st.session_state.get(once_key):
+        return True
 
     if "ga4_client_id" not in st.session_state:
         st.session_state["ga4_client_id"] = str(uuid.uuid4())
     if "ga4_session_id" not in st.session_state:
         st.session_state["ga4_session_id"] = str(int(time.time()))
 
+    event_params = {
+        "session_id": st.session_state["ga4_session_id"],
+        "engagement_time_msec": 100,
+    }
+    if params:
+        event_params.update(params)
+
     payload = {
         "client_id": st.session_state["ga4_client_id"],
         "events": [
             {
-                "name": "page_view",
-                "params": {
-                    "page_title": "AI Data Analyst Workbench",
-                    "page_location": "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/",
-                    "page_path": "/",
-                    "session_id": st.session_state["ga4_session_id"],
-                    "engagement_time_msec": 100,
-                },
-            },
-            {
-                "name": "streamlit_app_opened",
-                "params": {
-                    "session_id": st.session_state["ga4_session_id"],
-                    "engagement_time_msec": 100,
-                },
+                "name": event_name,
+                "params": event_params,
             },
         ],
     }
-    url = (
-        "https://www.google-analytics.com/mp/collect"
-        f"?measurement_id={measurement_id}&api_secret={api_secret}"
-    )
+    query = urllib.parse.urlencode({"measurement_id": measurement_id, "api_secret": api_secret})
+    url = f"https://www.google-analytics.com/mp/collect?{query}"
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -481,9 +474,26 @@ def send_ga4_server_page_view() -> None:
 
     try:
         with urllib.request.urlopen(request, timeout=3):
-            st.session_state["ga4_server_page_view_sent"] = True
+            if once_key:
+                st.session_state[once_key] = True
+            return True
     except (urllib.error.URLError, TimeoutError, OSError):
-        st.session_state["ga4_server_page_view_sent"] = False
+        if once_key:
+            st.session_state[once_key] = False
+        return False
+
+
+def send_ga4_server_page_view() -> None:
+    send_ga4_event(
+        "page_view",
+        {
+            "page_title": "AI Data Analyst Workbench",
+            "page_location": "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/",
+            "page_path": "/",
+        },
+        once_key="ga4_server_page_view_sent",
+    )
+    send_ga4_event("streamlit_app_opened", once_key="ga4_server_app_opened_sent")
 
 
 def extract_json_object(text: str) -> dict:
@@ -1109,13 +1119,21 @@ def build_report_html(report: dict) -> str:
 
 def render_download_button(report: dict, key: str) -> None:
     file_slug = re.sub(r"[^a-z0-9]+", "-", report["workflow_title"].lower()).strip("-")
-    st.download_button(
+    downloaded = st.download_button(
         "Download HTML Report",
         data=build_report_html(report),
         file_name=f"{file_slug or 'analysis'}-report.html",
         mime="text/html",
         key=key,
     )
+    if downloaded:
+        send_ga4_event(
+            "html_report_downloaded",
+            {
+                "workflow_key": str(report.get("query_key", "unknown")),
+                "workflow_title": str(report.get("workflow_title", "Unknown")),
+            },
+        )
 
 
 def is_downloadable_report(report: dict) -> bool:
@@ -1131,6 +1149,39 @@ def is_downloadable_report(report: dict) -> bool:
 def submit_question(question: str, supervisor_mode: str) -> None:
     decision = supervisor_decision(question, supervisor_mode)
     report = create_report_package(question, decision)
+    send_ga4_event(
+        "analysis_question_submitted",
+        {
+            "analysis_mode": supervisor_mode,
+            "action": str(decision.get("action", "unknown")),
+            "workflow_key": str(decision.get("query_key", "unsupported")),
+        },
+    )
+    if supervisor_mode == GUIDED_AI_MODE:
+        send_ga4_event(
+            "guided_ai_mode_used",
+            {
+                "action": str(decision.get("action", "unknown")),
+                "workflow_key": str(decision.get("query_key", "unsupported")),
+            },
+        )
+    if decision.get("action") == "run_workflow":
+        send_ga4_event(
+            "analysis_workflow_run",
+            {
+                "analysis_mode": supervisor_mode,
+                "workflow_key": str(decision.get("query_key", "unsupported")),
+                "workflow_title": str(report.get("workflow_title", "Unknown")),
+            },
+        )
+    elif decision.get("action") == "propose_new_analysis":
+        send_ga4_event(
+            "new_analysis_proposed",
+            {
+                "analysis_mode": supervisor_mode,
+                "workflow_key": str(decision.get("query_key", "unsupported")),
+            },
+        )
     if is_downloadable_report(report):
         st.session_state.latest_report = report
     st.session_state.messages.append({"role": "user", "content": question})
@@ -1344,11 +1395,22 @@ with st.sidebar:
     else:
         st.caption("Future pattern: ask questions from Slack or Teams and receive report links.")
 
-overview_tab, profile_tab, library_tab, report_tab = st.tabs(
-    ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"]
+nav_choice = st.radio(
+    "Navigation",
+    ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"],
+    horizontal=True,
+    label_visibility="collapsed",
 )
 
-with overview_tab:
+nav_event_names = {
+    "Ask Data": "ask_data_viewed",
+    "Dataset Profile": "dataset_profile_viewed",
+    "Workflow Library": "workflow_library_viewed",
+    "Executive Brief": "executive_brief_viewed",
+}
+send_ga4_event(nav_event_names[nav_choice], once_key=f"ga4_{nav_event_names[nav_choice]}")
+
+if nav_choice == "Ask Data":
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "user":
@@ -1380,7 +1442,7 @@ with overview_tab:
         submit_question(prompt, supervisor_mode)
         st.rerun()
 
-with profile_tab:
+if nav_choice == "Dataset Profile":
     st.subheader("Dataset Schema")
     st.dataframe(profile_dataset(), use_container_width=True)
 
@@ -1393,7 +1455,7 @@ with profile_tab:
     st.subheader("Preview")
     render_result("sample_rows")
 
-with library_tab:
+if nav_choice == "Workflow Library":
     st.subheader("Supported Analysis Workflows")
     st.write(
         "Each workflow is a trusted SQL framework with declared required columns. "
@@ -1408,7 +1470,7 @@ with library_tab:
         "the limitation or guides the user toward concrete analysis questions instead of forcing an unreliable answer."
     )
 
-with report_tab:
+if nav_choice == "Executive Brief":
     st.subheader("Project Goal")
     st.write(
         "This project demonstrates how AI can support repetitive, structured analytics work for "
