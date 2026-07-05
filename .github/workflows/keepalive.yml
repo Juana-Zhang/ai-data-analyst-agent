@@ -12,5 +12,10 @@ jobs:
     steps:
       - name: Ping deployed Streamlit app
         run: |
-          curl --fail --silent --show-error --max-time 60 \
-            "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/~/+/?keepalive=github-actions"
+          status=$(curl --silent --show-error --max-time 60 --output /dev/null --write-out "%{http_code}" \
+            "https://ai-data-analyst-agent-hc3rs5gwg8nxvyru2qjz3q.streamlit.app/?keepalive=github-actions")
+          echo "Streamlit keepalive HTTP status: ${status}"
+          if [ "${status}" -ge 200 ] && [ "${status}" -lt 400 ]; then
+            exit 0
+          fi
+          exit 1
