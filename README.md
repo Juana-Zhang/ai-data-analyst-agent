@@ -238,10 +238,9 @@ The app sends one server-side `page_view` event per Streamlit session and skips 
 - `suggested_question_clicked`
 - `suggested_question_clicked_rule_based`
 - `suggested_question_clicked_guided_ai`
-- `sql_used_expanded`
-- `sql_evidence_viewed`
+- `sql_used`
 
-Template runs are tracked as rule-based because the template button is a predefined business-question entry point. Suggested questions are tracked separately by the active analysis mode. Workflow runs also roll up into the unified `workflow_run` event, while SQL evidence views and report downloads are tracked as downstream consumption events.
+Template runs are tracked as rule-based because the template button is a predefined business-question entry point. Suggested questions are tracked separately by the active analysis mode. Workflow runs also roll up into the unified `workflow_run` event, while SQL evidence clicks and report downloads are tracked as downstream consumption events.
 
 GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 

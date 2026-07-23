@@ -1155,10 +1155,9 @@ def render_sql_evidence(sql: str | None, label: str, key: str, report: dict | No
                     "analysis_mode": str(report.get("decision", {}).get("supervisor", "unknown")),
                 }
             )
-        tracked_key = f"ga4_sql_evidence_viewed_{key}"
+        tracked_key = f"ga4_sql_used_{key}"
         if not st.session_state.get(tracked_key):
-            send_ga4_event("sql_used_expanded", event_params)
-            send_ga4_event("sql_evidence_viewed", event_params)
+            send_ga4_event("sql_used", event_params)
             st.session_state[tracked_key] = True
         st.code(sql or "No SQL executed.", language="sql")
 
