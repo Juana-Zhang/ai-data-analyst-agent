@@ -1406,23 +1406,20 @@ with st.sidebar:
 
     if st.button("Run Template", use_container_width=True):
         template_event_params = {
-            "analysis_mode": supervisor_mode,
+            "analysis_mode": RULE_BASED_MODE,
+            "selected_sidebar_mode": supervisor_mode,
+            "entry_point": "business_question_template",
             "template_question": selected_question,
         }
         send_ga4_event(
             "template_run_clicked",
             template_event_params,
         )
-        template_mode_event_name = (
-            "template_run_guided_ai"
-            if supervisor_mode == GUIDED_AI_MODE
-            else "template_run_rule_based"
-        )
         send_ga4_event(
-            template_mode_event_name,
+            "template_run_rule_based",
             template_event_params,
         )
-        submit_question(selected_question, supervisor_mode)
+        submit_question(selected_question, RULE_BASED_MODE)
 
     st.divider()
     st.subheader("Routing Logic")

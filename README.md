@@ -227,10 +227,11 @@ The app sends one server-side `page_view` event per Streamlit session and skips 
 - `report_downloaded`
 - `template_run_clicked`
 - `template_run_rule_based`
-- `template_run_guided_ai`
 - `suggested_question_clicked`
 - `suggested_question_clicked_rule_based`
 - `suggested_question_clicked_guided_ai`
+
+Template runs are tracked as rule-based because the template button is a predefined business-question entry point. Suggested questions are tracked separately by the active analysis mode.
 
 GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 
