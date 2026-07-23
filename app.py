@@ -1127,12 +1127,17 @@ def render_download_button(report: dict, key: str) -> None:
         key=key,
     )
     if downloaded:
+        event_params = {
+            "workflow_key": str(report.get("query_key", "unknown")),
+            "workflow_title": str(report.get("workflow_title", "Unknown")),
+        }
         send_ga4_event(
             "html_report_downloaded",
-            {
-                "workflow_key": str(report.get("query_key", "unknown")),
-                "workflow_title": str(report.get("workflow_title", "Unknown")),
-            },
+            event_params,
+        )
+        send_ga4_event(
+            "report_downloaded",
+            event_params,
         )
 
 
@@ -1166,13 +1171,23 @@ def submit_question(question: str, supervisor_mode: str) -> None:
             },
         )
     if decision.get("action") == "run_workflow":
+        workflow_event_params = {
+            "analysis_mode": supervisor_mode,
+            "workflow_key": str(decision.get("query_key", "unsupported")),
+            "workflow_title": str(report.get("workflow_title", "Unknown")),
+        }
         send_ga4_event(
             "analysis_workflow_run",
-            {
-                "analysis_mode": supervisor_mode,
-                "workflow_key": str(decision.get("query_key", "unsupported")),
-                "workflow_title": str(report.get("workflow_title", "Unknown")),
-            },
+            workflow_event_params,
+        )
+        mode_event_name = (
+            "workflow_run_guided_ai"
+            if supervisor_mode == GUIDED_AI_MODE
+            else "workflow_run_rule_based"
+        )
+        send_ga4_event(
+            mode_event_name,
+            workflow_event_params,
         )
     elif decision.get("action") == "propose_new_analysis":
         send_ga4_event(
@@ -1378,6 +1393,13 @@ with st.sidebar:
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
+        send_ga4_event(
+            "template_run_clicked",
+            {
+                "analysis_mode": supervisor_mode,
+                "template_question": selected_question,
+            },
+        )
         submit_question(selected_question, supervisor_mode)
 
     st.divider()

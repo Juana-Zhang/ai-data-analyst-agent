@@ -217,12 +217,15 @@ GA4_API_SECRET = "your_ga4_measurement_protocol_secret"
 
 The app sends one server-side `page_view` event per Streamlit session and skips GitHub keepalive pings. It also tracks product usage events such as:
 
-- `ask_data_viewed`
 - `analysis_question_submitted`
 - `analysis_workflow_run`
+- `workflow_run_rule_based`
+- `workflow_run_guided_ai`
 - `guided_ai_mode_used`
 - `new_analysis_proposed`
 - `html_report_downloaded`
+- `report_downloaded`
+- `template_run_clicked`
 
 GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 
