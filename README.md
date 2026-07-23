@@ -226,6 +226,11 @@ The app sends one server-side `page_view` event per Streamlit session and skips 
 - `html_report_downloaded`
 - `report_downloaded`
 - `template_run_clicked`
+- `template_run_rule_based`
+- `template_run_guided_ai`
+- `suggested_question_clicked`
+- `suggested_question_clicked_rule_based`
+- `suggested_question_clicked_guided_ai`
 
 GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 

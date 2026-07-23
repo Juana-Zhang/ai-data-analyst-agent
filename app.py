@@ -1218,6 +1218,18 @@ def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: s
     for index, item in enumerate(suggestions):
         question = str(item)
         if st.button(question, key=f"{key_prefix}_{index}", use_container_width=True):
+            event_params = {
+                "analysis_mode": supervisor_mode,
+                "suggestion_rank": index + 1,
+                "suggestion_source": key_prefix.split("_", 1)[0],
+            }
+            send_ga4_event("suggested_question_clicked", event_params)
+            mode_event_name = (
+                "suggested_question_clicked_guided_ai"
+                if supervisor_mode == GUIDED_AI_MODE
+                else "suggested_question_clicked_rule_based"
+            )
+            send_ga4_event(mode_event_name, event_params)
             submit_question(question, supervisor_mode)
             st.rerun()
 
@@ -1393,12 +1405,22 @@ with st.sidebar:
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
+        template_event_params = {
+            "analysis_mode": supervisor_mode,
+            "template_question": selected_question,
+        }
         send_ga4_event(
             "template_run_clicked",
-            {
-                "analysis_mode": supervisor_mode,
-                "template_question": selected_question,
-            },
+            template_event_params,
+        )
+        template_mode_event_name = (
+            "template_run_guided_ai"
+            if supervisor_mode == GUIDED_AI_MODE
+            else "template_run_rule_based"
+        )
+        send_ga4_event(
+            template_mode_event_name,
+            template_event_params,
         )
         submit_question(selected_question, supervisor_mode)
 
