@@ -1141,6 +1141,28 @@ def render_download_button(report: dict, key: str) -> None:
         )
 
 
+def render_sql_evidence(sql: str | None, label: str, key: str, report: dict | None = None) -> None:
+    show_sql = st.toggle(label, key=key)
+    if show_sql:
+        event_params = {
+            "sql_label": label,
+        }
+        if report:
+            event_params.update(
+                {
+                    "workflow_key": str(report.get("query_key", "unknown")),
+                    "workflow_title": str(report.get("workflow_title", "Unknown")),
+                    "analysis_mode": str(report.get("decision", {}).get("supervisor", "unknown")),
+                }
+            )
+        tracked_key = f"ga4_sql_evidence_viewed_{key}"
+        if not st.session_state.get(tracked_key):
+            send_ga4_event("sql_used_expanded", event_params)
+            send_ga4_event("sql_evidence_viewed", event_params)
+            st.session_state[tracked_key] = True
+        st.code(sql or "No SQL executed.", language="sql")
+
+
 def is_downloadable_report(report: dict) -> bool:
     result = report.get("result")
     return (
@@ -1151,17 +1173,25 @@ def is_downloadable_report(report: dict) -> bool:
     )
 
 
-def submit_question(question: str, supervisor_mode: str) -> None:
+def submit_question(question: str, supervisor_mode: str, entry_point: str = "manual_question") -> None:
     decision = supervisor_decision(question, supervisor_mode)
     report = create_report_package(question, decision)
+    question_event_params = {
+        "analysis_mode": supervisor_mode,
+        "entry_point": entry_point,
+        "action": str(decision.get("action", "unknown")),
+        "workflow_key": str(decision.get("query_key", "unsupported")),
+    }
     send_ga4_event(
         "analysis_question_submitted",
-        {
-            "analysis_mode": supervisor_mode,
-            "action": str(decision.get("action", "unknown")),
-            "workflow_key": str(decision.get("query_key", "unsupported")),
-        },
+        question_event_params,
     )
+    if entry_point == "business_question_template":
+        send_ga4_event("template_run_submitted", question_event_params)
+    elif supervisor_mode == GUIDED_AI_MODE:
+        send_ga4_event("guided_ai_question_submitted", question_event_params)
+    else:
+        send_ga4_event("manual_rule_based_question_submitted", question_event_params)
     if supervisor_mode == GUIDED_AI_MODE:
         send_ga4_event(
             "guided_ai_mode_used",
@@ -1180,6 +1210,10 @@ def submit_question(question: str, supervisor_mode: str) -> None:
             "analysis_workflow_run",
             workflow_event_params,
         )
+        send_ga4_event(
+            "workflow_run",
+            workflow_event_params,
+        )
         mode_event_name = (
             "workflow_run_guided_ai"
             if supervisor_mode == GUIDED_AI_MODE
@@ -1189,6 +1223,11 @@ def submit_question(question: str, supervisor_mode: str) -> None:
             mode_event_name,
             workflow_event_params,
         )
+        if entry_point == "business_question_template":
+            send_ga4_event(
+                "template_run_rule_based_analytics",
+                workflow_event_params,
+            )
     elif decision.get("action") == "propose_new_analysis":
         send_ga4_event(
             "new_analysis_proposed",
@@ -1230,7 +1269,7 @@ def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: s
                 else "suggested_question_clicked_rule_based"
             )
             send_ga4_event(mode_event_name, event_params)
-            submit_question(question, supervisor_mode)
+            submit_question(question, supervisor_mode, entry_point="suggested_question")
             st.rerun()
 
 
@@ -1253,8 +1292,12 @@ def render_report(report: dict) -> None:
             if required_columns:
                 st.write("**Fields needed:** " + ", ".join(str(column) for column in required_columns))
             st.warning(proposal.get("status", "Proposed only. Not executed automatically."))
-            with st.expander("Draft SQL for review"):
-                st.code(proposal.get("draft_sql", "No draft SQL was generated."), language="sql")
+            render_sql_evidence(
+                proposal.get("draft_sql", "No draft SQL was generated."),
+                "Draft SQL for review",
+                key=f"draft_sql_{id(report)}",
+                report=report,
+            )
         suggestions = report.get("suggested_questions", DEFAULT_SUGGESTED_QUESTIONS)
         if suggestions:
             render_suggested_question_buttons(
@@ -1343,8 +1386,12 @@ def render_latest_report_section() -> None:
         st.write("**Fields used by this workflow:**")
         st.write(", ".join(context["fields_used"]) if context["fields_used"] else "No workflow fields were selected.")
 
-        with st.expander("Report SQL evidence"):
-            st.code(latest_report["sql"] or "No SQL executed.", language="sql")
+        render_sql_evidence(
+            latest_report["sql"],
+            "Report SQL evidence",
+            key="latest_report_sql_evidence",
+            report=latest_report,
+        )
 
         st.write("**Limitations**")
         for item in latest_report["limitations"]:
@@ -1402,6 +1449,12 @@ with st.sidebar:
     st.subheader("Analysis Mode")
     supervisor_mode = st.radio("Choose how questions are routed", SUPERVISOR_MODES)
     st.session_state.supervisor_mode = supervisor_mode
+    if supervisor_mode == GUIDED_AI_MODE:
+        send_ga4_event(
+            "guided_ai_mode_clicked",
+            {"analysis_mode": supervisor_mode},
+            once_key="ga4_guided_ai_mode_clicked_sent",
+        )
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
@@ -1419,7 +1472,7 @@ with st.sidebar:
             "template_run_rule_based",
             template_event_params,
         )
-        submit_question(selected_question, RULE_BASED_MODE)
+        submit_question(selected_question, RULE_BASED_MODE, entry_point="business_question_template")
 
     st.divider()
     st.subheader("Routing Logic")
@@ -1458,8 +1511,12 @@ with overview_tab:
                     message["report"] = report
                 if decision.get("action", "run_workflow") == "run_workflow":
                     st.write(f"Selected analysis: **{report['workflow_title']}**")
-                    with st.expander("SQL used"):
-                        st.code(report["sql"], language="sql")
+                    render_sql_evidence(
+                        report["sql"],
+                        "SQL used",
+                        key=f"sql_used_{id(message)}",
+                        report=report,
+                    )
                 else:
                     st.write(f"Supervisor guidance: **{report['workflow_title']}**")
                 render_report(report)
@@ -1469,7 +1526,7 @@ with overview_tab:
     prompt = st.chat_input("Ask your data...", key="ask_data_prompt")
 
     if prompt:
-        submit_question(prompt, supervisor_mode)
+        submit_question(prompt, supervisor_mode, entry_point="manual_question")
         st.rerun()
 
 with profile_tab:

@@ -217,21 +217,31 @@ GA4_API_SECRET = "your_ga4_measurement_protocol_secret"
 
 The app sends one server-side `page_view` event per Streamlit session and skips GitHub keepalive pings. It also tracks product usage events such as:
 
+- `streamlit_app_opened`
+- `page_view`
 - `analysis_question_submitted`
+- `manual_rule_based_question_submitted`
+- `guided_ai_question_submitted`
 - `analysis_workflow_run`
+- `workflow_run`
 - `workflow_run_rule_based`
 - `workflow_run_guided_ai`
+- `guided_ai_mode_clicked`
 - `guided_ai_mode_used`
 - `new_analysis_proposed`
 - `html_report_downloaded`
 - `report_downloaded`
 - `template_run_clicked`
+- `template_run_submitted`
 - `template_run_rule_based`
+- `template_run_rule_based_analytics`
 - `suggested_question_clicked`
 - `suggested_question_clicked_rule_based`
 - `suggested_question_clicked_guided_ai`
+- `sql_used_expanded`
+- `sql_evidence_viewed`
 
-Template runs are tracked as rule-based because the template button is a predefined business-question entry point. Suggested questions are tracked separately by the active analysis mode.
+Template runs are tracked as rule-based because the template button is a predefined business-question entry point. Suggested questions are tracked separately by the active analysis mode. Workflow runs also roll up into the unified `workflow_run` event, while SQL evidence views and report downloads are tracked as downstream consumption events.
 
 GA4 can help estimate visits and engagement, but treat these numbers as directional because browser privacy settings, delayed GA processing, and Streamlit hosting behavior can affect reporting.
 
