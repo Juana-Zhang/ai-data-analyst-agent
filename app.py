@@ -155,9 +155,9 @@ QUERY_LIBRARY = {
     },
     "sample_rows": {
         "title": "Sample Rows",
-        "description": "Shows the first 10 rows from the dataset.",
+        "description": "Shows the first 20 rows from the dataset.",
         "required_columns": [],
-        "sql": "SELECT * FROM read_csv_auto('data.csv') LIMIT 10",
+        "sql": "SELECT * FROM read_csv_auto('data.csv') LIMIT 20",
     },
     "high_risk_segments": {
         "title": "High-Risk Booking Segments",
