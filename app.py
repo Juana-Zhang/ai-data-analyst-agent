@@ -1279,6 +1279,20 @@ def render_report(report: dict) -> None:
     if report["decision"].get("action", "run_workflow") != "run_workflow" or query_key == "unsupported":
         st.caption(f"Interpretation source: {report.get('interpretation_source', 'Supervisor guidance')}")
         st.info(report["interpretation"])
+        if report["decision"].get("supervisor") == RULE_BASED_MODE:
+            st.caption("Want help reframing this question or exploring a new analysis path?")
+            if st.button("Explore this with Guided AI", key=f"guided_ai_explore_{id(report)}"):
+                send_ga4_event(
+                    "guided_ai_explore_clicked",
+                    {
+                        "source_mode": RULE_BASED_MODE,
+                        "target_mode": GUIDED_AI_MODE,
+                        "action": str(report["decision"].get("action", "unknown")),
+                        "workflow_key": str(report.get("query_key", "unsupported")),
+                    },
+                )
+                submit_question(report["question"], GUIDED_AI_MODE, entry_point="guided_ai_explore")
+                st.rerun()
         if report["decision"].get("action") == "suggest_analysis_plan":
             st.write("Suggested 1-2 step path:")
             st.write("1. Establish the baseline with an overview metric.")
