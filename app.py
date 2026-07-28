@@ -230,52 +230,6 @@ SUPERVISOR_MODES = [
     GUIDED_AI_MODE,
 ]
 
-ASK_DATA_TAB = "Ask Data"
-TAB_OPTIONS = [
-    ASK_DATA_TAB,
-    "Dataset Profile",
-    "Workflow Library",
-    "Executive Brief",
-]
-
-
-def set_active_tab(tab_name: str) -> None:
-    st.session_state.active_tab = tab_name
-
-
-def go_to_ask_data() -> None:
-    set_active_tab(ASK_DATA_TAB)
-
-
-def render_main_navigation() -> None:
-    active_tab = st.session_state.active_tab
-    st.markdown(
-        """
-        <style>
-          div[data-testid="column"] > div:has(button[kind="secondary"]) {
-            padding-bottom: 8px;
-          }
-          div[data-testid="column"] button {
-            border: 0;
-            border-radius: 0;
-            box-shadow: none;
-            background: transparent;
-            font-weight: 650;
-            padding-left: 0;
-            padding-right: 0;
-          }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    columns = st.columns([0.9, 1.25, 1.35, 1.2, 5])
-    for index, tab_name in enumerate(TAB_OPTIONS):
-        label = tab_name if tab_name != active_tab else f":red[{tab_name}]"
-        if columns[index].button(label, key=f"nav_{tab_name}", use_container_width=True):
-            set_active_tab(tab_name)
-            st.rerun()
-    st.divider()
-
 
 def run_sql(sql: str) -> pd.DataFrame:
     resolved_sql = sql.replace("read_csv_auto('data.csv')", DATA_SQL_REFERENCE)
@@ -1493,9 +1447,6 @@ if "messages" not in st.session_state:
 if "latest_report" not in st.session_state:
     st.session_state.latest_report = None
 
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = ASK_DATA_TAB
-
 if "supervisor_mode_selector" not in st.session_state:
     st.session_state.supervisor_mode_selector = st.session_state.get("supervisor_mode", RULE_BASED_MODE)
 
@@ -1516,7 +1467,6 @@ with st.sidebar:
         "Choose how questions are routed",
         SUPERVISOR_MODES,
         key="supervisor_mode_selector",
-        on_change=go_to_ask_data,
     )
     st.session_state.supervisor_mode = supervisor_mode
     if supervisor_mode == GUIDED_AI_MODE:
@@ -1528,7 +1478,6 @@ with st.sidebar:
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
-        go_to_ask_data()
         template_event_params = {
             "analysis_mode": RULE_BASED_MODE,
             "selected_sidebar_mode": supervisor_mode,
@@ -1560,10 +1509,11 @@ with st.sidebar:
     else:
         st.caption("Future pattern: ask questions from Slack or Teams and receive report links.")
 
-render_main_navigation()
-active_tab = st.session_state.active_tab
+overview_tab, profile_tab, library_tab, report_tab = st.tabs(
+    ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"]
+)
 
-if active_tab == ASK_DATA_TAB:
+with overview_tab:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "user":
@@ -1599,7 +1549,7 @@ if active_tab == ASK_DATA_TAB:
         submit_question(prompt, supervisor_mode, entry_point="manual_question")
         st.rerun()
 
-if active_tab == "Dataset Profile":
+with profile_tab:
     st.subheader("Dataset Schema")
     st.dataframe(profile_dataset(), use_container_width=True)
 
@@ -1612,7 +1562,7 @@ if active_tab == "Dataset Profile":
     st.subheader("Preview")
     render_result("sample_rows")
 
-if active_tab == "Workflow Library":
+with library_tab:
     st.subheader("Supported Analysis Workflows")
     st.write(
         "Each workflow is a trusted SQL framework with declared required columns. "
@@ -1627,7 +1577,7 @@ if active_tab == "Workflow Library":
         "the limitation or guides the user toward concrete analysis questions instead of forcing an unreliable answer."
     )
 
-if active_tab == "Executive Brief":
+with report_tab:
     st.subheader("Project Goal")
     st.write(
         "This project demonstrates how AI can support repetitive, structured analytics work for "
