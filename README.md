@@ -226,6 +226,7 @@ The app sends one server-side `page_view` event per Streamlit session and skips 
 - `workflow_run`
 - `workflow_run_rule_based`
 - `workflow_run_guided_ai`
+- `analysis_mode_confirmed`
 - `guided_ai_mode_clicked`
 - `guided_ai_explore_clicked`
 - `guided_ai_mode_used`

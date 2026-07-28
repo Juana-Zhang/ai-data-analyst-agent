@@ -430,6 +430,34 @@ def render_ga4_tracking() -> None:
     )
 
 
+def request_ask_data_focus() -> None:
+    st.session_state.focus_ask_data_tab = True
+
+
+def render_ask_data_focus_script() -> None:
+    if not st.session_state.get("focus_ask_data_tab"):
+        return
+
+    components.html(
+        """
+        <script>
+          const clickAskDataTab = () => {
+            const parentDoc = window.parent.document;
+            const tabs = Array.from(parentDoc.querySelectorAll('[role="tab"]'));
+            const askDataTab = tabs.find((tab) => tab.textContent.trim() === 'Ask Data');
+            if (askDataTab) {
+              askDataTab.click();
+            }
+          };
+          setTimeout(clickAskDataTab, 50);
+          setTimeout(clickAskDataTab, 250);
+        </script>
+        """,
+        height=0,
+    )
+    st.session_state.focus_ask_data_tab = False
+
+
 def send_ga4_event(event_name: str, params: dict | None = None, once_key: str | None = None) -> bool:
     measurement_id = get_ga4_measurement_id()
     api_secret = get_ga4_api_secret()
@@ -1475,9 +1503,16 @@ with st.sidebar:
             {"analysis_mode": supervisor_mode},
             once_key="ga4_guided_ai_mode_clicked_sent",
         )
+    if st.button("Confirm Mode", use_container_width=True):
+        send_ga4_event(
+            "analysis_mode_confirmed",
+            {"analysis_mode": supervisor_mode},
+        )
+        request_ask_data_focus()
     selected_question = st.selectbox("Business question templates", list(QUESTION_TEMPLATES.keys()))
 
     if st.button("Run Template", use_container_width=True):
+        request_ask_data_focus()
         template_event_params = {
             "analysis_mode": RULE_BASED_MODE,
             "selected_sidebar_mode": supervisor_mode,
@@ -1512,6 +1547,7 @@ with st.sidebar:
 overview_tab, profile_tab, library_tab, report_tab = st.tabs(
     ["Ask Data", "Dataset Profile", "Workflow Library", "Executive Brief"]
 )
+render_ask_data_focus_script()
 
 with overview_tab:
     for message in st.session_state.messages:
