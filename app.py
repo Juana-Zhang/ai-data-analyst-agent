@@ -237,69 +237,44 @@ TAB_OPTIONS = [
     "Workflow Library",
     "Executive Brief",
 ]
-TAB_ROUTES = {
-    ASK_DATA_TAB: "ask-data",
-    "Dataset Profile": "dataset-profile",
-    "Workflow Library": "workflow-library",
-    "Executive Brief": "executive-brief",
-}
-TAB_NAMES_BY_ROUTE = {route: name for name, route in TAB_ROUTES.items()}
 
 
 def set_active_tab(tab_name: str) -> None:
     st.session_state.active_tab = tab_name
-    if tab_name in TAB_ROUTES:
-        st.query_params["tab"] = TAB_ROUTES[tab_name]
 
 
 def go_to_ask_data() -> None:
     set_active_tab(ASK_DATA_TAB)
 
 
-def sync_active_tab_from_url() -> None:
-    tab_route = st.query_params.get("tab")
-    if isinstance(tab_route, list):
-        tab_route = tab_route[0] if tab_route else None
-    if tab_route in TAB_NAMES_BY_ROUTE:
-        st.session_state.active_tab = TAB_NAMES_BY_ROUTE[tab_route]
-
-
 def render_main_navigation() -> None:
     active_tab = st.session_state.active_tab
-    links = []
-    for tab_name in TAB_OPTIONS:
-        active_class = " active" if tab_name == active_tab else ""
-        links.append(
-            f'<a class="workbench-tab{active_class}" href="?tab={TAB_ROUTES[tab_name]}">'
-            f"{html.escape(tab_name)}</a>"
-        )
     st.markdown(
         """
         <style>
-          .workbench-tabs {
-            display: flex;
-            gap: 22px;
-            border-bottom: 1px solid rgba(120, 128, 140, 0.28);
-            margin: 18px 0 26px;
+          div[data-testid="column"] > div:has(button[kind="secondary"]) {
+            padding-bottom: 8px;
           }
-          .workbench-tab {
-            color: inherit !important;
-            text-decoration: none !important;
-            padding: 0 0 10px;
-            border-bottom: 2px solid transparent;
-            font-weight: 600;
-          }
-          .workbench-tab.active {
-            color: #ff4b4b !important;
-            border-bottom-color: #ff4b4b;
+          div[data-testid="column"] button {
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            background: transparent;
+            font-weight: 650;
+            padding-left: 0;
+            padding-right: 0;
           }
         </style>
-        """
-        + '<nav class="workbench-tabs">'
-        + "".join(links)
-        + "</nav>",
+        """,
         unsafe_allow_html=True,
     )
+    columns = st.columns([0.9, 1.25, 1.35, 1.2, 5])
+    for index, tab_name in enumerate(TAB_OPTIONS):
+        label = tab_name if tab_name != active_tab else f":red[{tab_name}]"
+        if columns[index].button(label, key=f"nav_{tab_name}", use_container_width=True):
+            set_active_tab(tab_name)
+            st.rerun()
+    st.divider()
 
 
 def run_sql(sql: str) -> pd.DataFrame:
@@ -1517,8 +1492,6 @@ if "messages" not in st.session_state:
 
 if "latest_report" not in st.session_state:
     st.session_state.latest_report = None
-
-sync_active_tab_from_url()
 
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = ASK_DATA_TAB
