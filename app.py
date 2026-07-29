@@ -441,16 +441,28 @@ def render_ask_data_focus_script() -> None:
     components.html(
         """
         <script>
+          const normalize = (text) => (text || '').replace(/\\s+/g, ' ').trim();
           const clickAskDataTab = () => {
             const parentDoc = window.parent.document;
-            const tabs = Array.from(parentDoc.querySelectorAll('[role="tab"]'));
-            const askDataTab = tabs.find((tab) => tab.textContent.trim() === 'Ask Data');
+            const tabs = Array.from(
+              parentDoc.querySelectorAll('button[role="tab"], [role="tab"], [data-baseweb="tab"]')
+            );
+            const askDataTab = tabs.find((tab) => normalize(tab.textContent) === 'Ask Data');
             if (askDataTab) {
+              askDataTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+              askDataTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
               askDataTab.click();
+              return true;
             }
+            return false;
           };
-          setTimeout(clickAskDataTab, 50);
-          setTimeout(clickAskDataTab, 250);
+          let attempts = 0;
+          const intervalId = setInterval(() => {
+            attempts += 1;
+            if (clickAskDataTab() || attempts >= 20) {
+              clearInterval(intervalId);
+            }
+          }, 150);
         </script>
         """,
         height=0,
