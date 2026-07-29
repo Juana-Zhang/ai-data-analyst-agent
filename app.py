@@ -1294,6 +1294,27 @@ def submit_question(question: str, supervisor_mode: str, entry_point: str = "man
     )
 
 
+def conversation_turns(messages: list[dict]) -> list[list[dict]]:
+    turns: list[list[dict]] = []
+    current_turn: list[dict] = []
+
+    for message in messages:
+        if message.get("role") == "user":
+            if current_turn:
+                turns.append(current_turn)
+            current_turn = [message]
+        else:
+            if current_turn:
+                current_turn.append(message)
+            else:
+                turns.append([message])
+
+    if current_turn:
+        turns.append(current_turn)
+
+    return turns
+
+
 def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: str, key_prefix: str) -> None:
     if not suggestions:
         return
@@ -1568,34 +1589,35 @@ overview_tab, profile_tab, library_tab, report_tab = st.tabs(
 render_ask_data_focus_script()
 
 with overview_tab:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if message["role"] == "user":
-                st.write(message["content"])
-            else:
-                decision = message.get("decision")
-                report = message.get("report")
-                if decision:
-                    st.write(f"Analysis mode: **{decision['supervisor']}**")
-                    st.caption(f"Confidence: {decision['confidence']}")
-                    st.caption(f"Action: {decision.get('action', 'run_workflow')}")
-                    st.write(decision["reasoning"])
-                if not report:
-                    report = create_report_package(message.get("content", ""), decision)
-                    message["report"] = report
-                if decision.get("action", "run_workflow") == "run_workflow":
-                    st.write(f"Selected analysis: **{report['workflow_title']}**")
-                    render_sql_evidence(
-                        report["sql"],
-                        "SQL used",
-                        key=f"sql_used_{id(message)}",
-                        report=report,
-                    )
+    for turn in reversed(conversation_turns(st.session_state.messages)):
+        for message in turn:
+            with st.chat_message(message["role"]):
+                if message["role"] == "user":
+                    st.write(message["content"])
                 else:
-                    st.write(f"Supervisor guidance: **{report['workflow_title']}**")
-                render_report(report)
-                if is_downloadable_report(report):
-                    render_download_button(report, key=f"download_{id(message)}")
+                    decision = message.get("decision")
+                    report = message.get("report")
+                    if decision:
+                        st.write(f"Analysis mode: **{decision['supervisor']}**")
+                        st.caption(f"Confidence: {decision['confidence']}")
+                        st.caption(f"Action: {decision.get('action', 'run_workflow')}")
+                        st.write(decision["reasoning"])
+                    if not report:
+                        report = create_report_package(message.get("content", ""), decision)
+                        message["report"] = report
+                    if decision.get("action", "run_workflow") == "run_workflow":
+                        st.write(f"Selected analysis: **{report['workflow_title']}**")
+                        render_sql_evidence(
+                            report["sql"],
+                            "SQL used",
+                            key=f"sql_used_{id(message)}",
+                            report=report,
+                        )
+                    else:
+                        st.write(f"Supervisor guidance: **{report['workflow_title']}**")
+                    render_report(report)
+                    if is_downloadable_report(report):
+                        render_download_button(report, key=f"download_{id(message)}")
 
     prompt = st.chat_input("Ask your data...", key="ask_data_prompt")
 
