@@ -451,23 +451,23 @@ def render_ask_data_focus_script() -> None:
               window.parent.history.replaceState(null, '', currentUrl.pathname + currentUrl.search + currentUrl.hash);
             }
           };
-          const scrollToLatestTurn = () => {
+          const scrollToAskDataInput = () => {
             if (!__SHOULD_SCROLL_TOP__) return;
             const parentDoc = window.parent.document;
-            const latestTurn = parentDoc.getElementById('ask-data-latest-turn');
-            if (!latestTurn) return false;
+            const inputAnchor = parentDoc.getElementById('ask-data-input-anchor');
+            if (!inputAnchor) return false;
             try {
-              latestTurn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              inputAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
               return true;
             } catch (error) {
               return false;
             }
           };
-          const retryScrollToLatestTurn = () => {
+          const retryScrollToAskDataInput = () => {
             let scrollAttempts = 0;
             const scrollIntervalId = setInterval(() => {
               scrollAttempts += 1;
-              if (scrollToLatestTurn() || scrollAttempts >= 30) {
+              if (scrollToAskDataInput() || scrollAttempts >= 30) {
                 clearInterval(scrollIntervalId);
               }
             }, 120);
@@ -506,7 +506,7 @@ def render_ask_data_focus_script() -> None:
               clearInterval(intervalId);
               cleanLegacyTabQuery();
               if (__SHOULD_SCROLL_TOP__) {
-                setTimeout(retryScrollToLatestTurn, 120);
+                setTimeout(retryScrollToAskDataInput, 120);
               } else {
                 setTimeout(scrollToAskDataTabOnly, 120);
               }
@@ -1643,8 +1643,20 @@ overview_tab, profile_tab, library_tab, report_tab = st.tabs(
 render_ask_data_focus_script()
 
 with overview_tab:
-    if st.session_state.messages:
-        st.markdown('<div id="ask-data-latest-turn"></div>', unsafe_allow_html=True)
+    st.markdown('<div id="ask-data-input-anchor"></div>', unsafe_allow_html=True)
+
+    with st.form("ask_data_form", clear_on_submit=True):
+        prompt = st.text_input(
+            "Ask your data",
+            placeholder="Ask your data...",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button("Ask", use_container_width=True)
+
+    if submitted and prompt.strip():
+        submit_question(prompt.strip(), supervisor_mode, entry_point="manual_question")
+        request_ask_data_focus()
+        st.rerun()
 
     for turn in reversed(conversation_turns(st.session_state.messages)):
         for message in turn:
@@ -1675,13 +1687,6 @@ with overview_tab:
                     render_report(report)
                     if is_downloadable_report(report):
                         render_download_button(report, key=f"download_{id(message)}")
-
-    prompt = st.chat_input("Ask your data...", key="ask_data_prompt")
-
-    if prompt:
-        submit_question(prompt, supervisor_mode, entry_point="manual_question")
-        request_ask_data_focus()
-        st.rerun()
 
 with profile_tab:
     st.subheader("Dataset Schema")
