@@ -1310,7 +1310,7 @@ def submit_question(question: str, supervisor_mode: str, entry_point: str = "man
 def set_active_analysis_mode(mode: str) -> None:
     if mode in SUPERVISOR_MODES:
         st.session_state.supervisor_mode = mode
-        st.session_state.supervisor_mode_selector = mode
+        st.session_state.pending_supervisor_mode_selector = mode
 
 
 def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: str, key_prefix: str) -> None:
@@ -1518,6 +1518,9 @@ if "latest_report" not in st.session_state:
 
 if "supervisor_mode_selector" not in st.session_state:
     st.session_state.supervisor_mode_selector = st.session_state.get("supervisor_mode", RULE_BASED_MODE)
+
+if "pending_supervisor_mode_selector" in st.session_state:
+    st.session_state.supervisor_mode_selector = st.session_state.pop("pending_supervisor_mode_selector")
 
 with st.sidebar:
     st.header("Workbench")
