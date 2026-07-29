@@ -1307,6 +1307,12 @@ def submit_question(question: str, supervisor_mode: str, entry_point: str = "man
     )
 
 
+def set_active_analysis_mode(mode: str) -> None:
+    if mode in SUPERVISOR_MODES:
+        st.session_state.supervisor_mode = mode
+        st.session_state.supervisor_mode_selector = mode
+
+
 def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: str, key_prefix: str) -> None:
     if not suggestions:
         return
@@ -1327,6 +1333,7 @@ def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: s
                 else "suggested_question_clicked_rule_based"
             )
             send_ga4_event(mode_event_name, event_params)
+            set_active_analysis_mode(supervisor_mode)
             submit_question(question, supervisor_mode, entry_point="suggested_question")
             request_ask_data_focus()
             st.rerun()
@@ -1351,6 +1358,7 @@ def render_report(report: dict) -> None:
                         "workflow_key": str(report.get("query_key", "unsupported")),
                     },
                 )
+                set_active_analysis_mode(GUIDED_AI_MODE)
                 submit_question(report["question"], GUIDED_AI_MODE, entry_point="guided_ai_explore")
                 request_ask_data_focus()
                 st.rerun()
