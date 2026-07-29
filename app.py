@@ -430,18 +430,47 @@ def render_ga4_tracking() -> None:
     )
 
 
-def request_ask_data_focus() -> None:
+def request_ask_data_focus(scroll_to_top: bool = True) -> None:
     st.session_state.focus_ask_data_tab = True
+    st.session_state.scroll_ask_data_top = scroll_to_top
 
 
 def render_ask_data_focus_script() -> None:
     if not st.session_state.get("focus_ask_data_tab"):
         return
 
+    should_scroll_top = bool(st.session_state.get("scroll_ask_data_top", True))
     components.html(
         """
         <script>
           const normalize = (text) => (text || '').replace(/\\s+/g, ' ').trim();
+          const cleanLegacyTabQuery = () => {
+            const currentUrl = new URL(window.parent.location.href);
+            if (currentUrl.searchParams.has('tab')) {
+              currentUrl.searchParams.delete('tab');
+              window.parent.history.replaceState(null, '', currentUrl.pathname + currentUrl.search + currentUrl.hash);
+            }
+          };
+          const scrollToAskDataTop = () => {
+            if (!__SHOULD_SCROLL_TOP__) return;
+            const parentDoc = window.parent.document;
+            const scrollTargets = [
+              parentDoc.querySelector('[data-testid="stAppViewContainer"]'),
+              parentDoc.querySelector('section.main'),
+              parentDoc.scrollingElement,
+              parentDoc.documentElement,
+              parentDoc.body
+            ].filter(Boolean);
+            scrollTargets.forEach((target) => {
+              try {
+                target.scrollTo({ top: 0, behavior: 'smooth' });
+                target.scrollTop = 0;
+              } catch (error) {}
+            });
+            try {
+              window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (error) {}
+          };
           const clickAskDataTab = () => {
             const parentDoc = window.parent.document;
             const tabs = Array.from(
@@ -461,13 +490,16 @@ def render_ask_data_focus_script() -> None:
             attempts += 1;
             if (clickAskDataTab() || attempts >= 20) {
               clearInterval(intervalId);
+              cleanLegacyTabQuery();
+              setTimeout(scrollToAskDataTop, 120);
             }
           }, 150);
         </script>
-        """,
+        """.replace("__SHOULD_SCROLL_TOP__", str(should_scroll_top).lower()),
         height=0,
     )
     st.session_state.focus_ask_data_tab = False
+    st.session_state.scroll_ask_data_top = False
 
 
 def send_ga4_event(event_name: str, params: dict | None = None, once_key: str | None = None) -> bool:
@@ -1221,6 +1253,8 @@ def is_downloadable_report(report: dict) -> bool:
 def submit_question(question: str, supervisor_mode: str, entry_point: str = "manual_question") -> None:
     decision = supervisor_decision(question, supervisor_mode)
     report = create_report_package(question, decision)
+    report["submitted_mode"] = supervisor_mode
+    report["entry_point"] = entry_point
     question_event_params = {
         "analysis_mode": supervisor_mode,
         "entry_point": entry_point,
@@ -1336,6 +1370,7 @@ def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: s
             )
             send_ga4_event(mode_event_name, event_params)
             submit_question(question, supervisor_mode, entry_point="suggested_question")
+            request_ask_data_focus()
             st.rerun()
 
 
@@ -1359,6 +1394,7 @@ def render_report(report: dict) -> None:
                     },
                 )
                 submit_question(report["question"], GUIDED_AI_MODE, entry_point="guided_ai_explore")
+                request_ask_data_focus()
                 st.rerun()
         if report["decision"].get("action") == "suggest_analysis_plan":
             st.write("Suggested 1-2 step path:")
@@ -1382,7 +1418,7 @@ def render_report(report: dict) -> None:
         if suggestions:
             render_suggested_question_buttons(
                 suggestions,
-                st.session_state.get("supervisor_mode", SUPERVISOR_MODES[0]),
+                report.get("submitted_mode", st.session_state.get("supervisor_mode", SUPERVISOR_MODES[0])),
                 f"suggested_{id(report)}",
             )
         return
@@ -1623,6 +1659,7 @@ with overview_tab:
 
     if prompt:
         submit_question(prompt, supervisor_mode, entry_point="manual_question")
+        request_ask_data_focus()
         st.rerun()
 
 with profile_tab:
