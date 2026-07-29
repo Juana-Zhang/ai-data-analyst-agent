@@ -430,16 +430,14 @@ def render_ga4_tracking() -> None:
     )
 
 
-def request_ask_data_focus(scroll_to_top: bool = True) -> None:
+def request_ask_data_focus() -> None:
     st.session_state.focus_ask_data_tab = True
-    st.session_state.scroll_ask_data_top = scroll_to_top
 
 
 def render_ask_data_focus_script() -> None:
     if not st.session_state.get("focus_ask_data_tab"):
         return
 
-    should_scroll_top = bool(st.session_state.get("scroll_ask_data_top", True))
     components.html(
         """
         <script>
@@ -450,37 +448,6 @@ def render_ask_data_focus_script() -> None:
               currentUrl.searchParams.delete('tab');
               window.parent.history.replaceState(null, '', currentUrl.pathname + currentUrl.search + currentUrl.hash);
             }
-          };
-          const scrollToAskDataInput = () => {
-            if (!__SHOULD_SCROLL_TOP__) return;
-            const parentDoc = window.parent.document;
-            const inputAnchor = parentDoc.getElementById('ask-data-input-anchor');
-            if (!inputAnchor) return false;
-            try {
-              inputAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              return true;
-            } catch (error) {
-              return false;
-            }
-          };
-          const retryScrollToAskDataInput = () => {
-            let scrollAttempts = 0;
-            const scrollIntervalId = setInterval(() => {
-              scrollAttempts += 1;
-              if (scrollToAskDataInput() || scrollAttempts >= 30) {
-                clearInterval(scrollIntervalId);
-              }
-            }, 120);
-          };
-          const scrollToAskDataTabOnly = () => {
-            const parentDoc = window.parent.document;
-            const askDataTab = Array.from(
-              parentDoc.querySelectorAll('button[role="tab"], [role="tab"], [data-baseweb="tab"]')
-            ).find((tab) => normalize(tab.textContent) === 'Ask Data');
-            if (!askDataTab) return;
-            try {
-              askDataTab.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            } catch (error) {}
           };
           const clickAskDataTab = () => {
             const parentDoc = window.parent.document;
@@ -505,19 +472,13 @@ def render_ask_data_focus_script() -> None:
             if (clickAskDataTab() || attempts >= 20) {
               clearInterval(intervalId);
               cleanLegacyTabQuery();
-              if (__SHOULD_SCROLL_TOP__) {
-                setTimeout(retryScrollToAskDataInput, 120);
-              } else {
-                setTimeout(scrollToAskDataTabOnly, 120);
-              }
             }
           }, 150);
         </script>
-        """.replace("__SHOULD_SCROLL_TOP__", str(should_scroll_top).lower()),
+        """,
         height=0,
     )
     st.session_state.focus_ask_data_tab = False
-    st.session_state.scroll_ask_data_top = False
 
 
 def send_ga4_event(event_name: str, params: dict | None = None, once_key: str | None = None) -> bool:
@@ -1346,27 +1307,6 @@ def submit_question(question: str, supervisor_mode: str, entry_point: str = "man
     )
 
 
-def conversation_turns(messages: list[dict]) -> list[list[dict]]:
-    turns: list[list[dict]] = []
-    current_turn: list[dict] = []
-
-    for message in messages:
-        if message.get("role") == "user":
-            if current_turn:
-                turns.append(current_turn)
-            current_turn = [message]
-        else:
-            if current_turn:
-                current_turn.append(message)
-            else:
-                turns.append([message])
-
-    if current_turn:
-        turns.append(current_turn)
-
-    return turns
-
-
 def render_suggested_question_buttons(suggestions: list[str], supervisor_mode: str, key_prefix: str) -> None:
     if not suggestions:
         return
@@ -1643,50 +1583,41 @@ overview_tab, profile_tab, library_tab, report_tab = st.tabs(
 render_ask_data_focus_script()
 
 with overview_tab:
-    st.markdown('<div id="ask-data-input-anchor"></div>', unsafe_allow_html=True)
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if message["role"] == "user":
+                st.write(message["content"])
+            else:
+                decision = message.get("decision")
+                report = message.get("report")
+                if decision:
+                    st.write(f"Analysis mode: **{decision['supervisor']}**")
+                    st.caption(f"Confidence: {decision['confidence']}")
+                    st.caption(f"Action: {decision.get('action', 'run_workflow')}")
+                    st.write(decision["reasoning"])
+                if not report:
+                    report = create_report_package(message.get("content", ""), decision)
+                    message["report"] = report
+                if decision.get("action", "run_workflow") == "run_workflow":
+                    st.write(f"Selected analysis: **{report['workflow_title']}**")
+                    render_sql_evidence(
+                        report["sql"],
+                        "SQL used",
+                        key=f"sql_used_{id(message)}",
+                        report=report,
+                    )
+                else:
+                    st.write(f"Supervisor guidance: **{report['workflow_title']}**")
+                render_report(report)
+                if is_downloadable_report(report):
+                    render_download_button(report, key=f"download_{id(message)}")
 
-    with st.form("ask_data_form", clear_on_submit=True):
-        prompt = st.text_input(
-            "Ask your data",
-            placeholder="Ask your data...",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Ask", use_container_width=True)
+    prompt = st.chat_input("Ask your data...", key="ask_data_prompt")
 
-    if submitted and prompt.strip():
-        submit_question(prompt.strip(), supervisor_mode, entry_point="manual_question")
+    if prompt:
+        submit_question(prompt, supervisor_mode, entry_point="manual_question")
         request_ask_data_focus()
         st.rerun()
-
-    for turn in reversed(conversation_turns(st.session_state.messages)):
-        for message in turn:
-            with st.chat_message(message["role"]):
-                if message["role"] == "user":
-                    st.write(message["content"])
-                else:
-                    decision = message.get("decision")
-                    report = message.get("report")
-                    if decision:
-                        st.write(f"Analysis mode: **{decision['supervisor']}**")
-                        st.caption(f"Confidence: {decision['confidence']}")
-                        st.caption(f"Action: {decision.get('action', 'run_workflow')}")
-                        st.write(decision["reasoning"])
-                    if not report:
-                        report = create_report_package(message.get("content", ""), decision)
-                        message["report"] = report
-                    if decision.get("action", "run_workflow") == "run_workflow":
-                        st.write(f"Selected analysis: **{report['workflow_title']}**")
-                        render_sql_evidence(
-                            report["sql"],
-                            "SQL used",
-                            key=f"sql_used_{id(message)}",
-                            report=report,
-                        )
-                    else:
-                        st.write(f"Supervisor guidance: **{report['workflow_title']}**")
-                    render_report(report)
-                    if is_downloadable_report(report):
-                        render_download_button(report, key=f"download_{id(message)}")
 
 with profile_tab:
     st.subheader("Dataset Schema")
