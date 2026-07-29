@@ -602,16 +602,22 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
     api_key = get_gemini_api_key()
     if not api_key:
         fallback = deterministic_supervisor(question)
-        fallback["supervisor"] = "Rule-based Mode fallback"
-        fallback["reasoning"] += " Guided AI Mode was selected, but no GEMINI_API_KEY was configured."
+        fallback["supervisor"] = "Guided AI Mode fallback (local router)"
+        fallback["reasoning"] += (
+            " Guided AI Mode was selected, but no GEMINI_API_KEY was configured, "
+            "so the app used the local safe router."
+        )
         return fallback
 
     try:
         from google import genai
     except ImportError:
         fallback = deterministic_supervisor(question)
-        fallback["supervisor"] = "Rule-based Mode fallback"
-        fallback["reasoning"] += " Guided AI Mode was selected, but the google-genai package is not installed."
+        fallback["supervisor"] = "Guided AI Mode fallback (local router)"
+        fallback["reasoning"] += (
+            " Guided AI Mode was selected, but the google-genai package is not installed, "
+            "so the app used the local safe router."
+        )
         return fallback
 
     metadata = json.dumps(workflow_metadata(), indent=2)
@@ -650,8 +656,8 @@ def gemini_supervisor(question: str) -> dict[str, str | float]:
         }
     except Exception as exc:
         fallback = deterministic_supervisor(question)
-        fallback["supervisor"] = "Rule-based Mode fallback"
-        fallback["reasoning"] += f" Guided AI Mode failed safely: {exc}"
+        fallback["supervisor"] = "Guided AI Mode fallback (local router)"
+        fallback["reasoning"] += f" Guided AI Mode was temporarily unavailable, so the app used the local safe router. Details: {exc}"
         return fallback
 
 
