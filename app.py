@@ -451,24 +451,35 @@ def render_ask_data_focus_script() -> None:
               window.parent.history.replaceState(null, '', currentUrl.pathname + currentUrl.search + currentUrl.hash);
             }
           };
-          const scrollToAskDataTop = () => {
+          const scrollToLatestTurn = () => {
             if (!__SHOULD_SCROLL_TOP__) return;
             const parentDoc = window.parent.document;
-            const scrollTargets = [
-              parentDoc.querySelector('[data-testid="stAppViewContainer"]'),
-              parentDoc.querySelector('section.main'),
-              parentDoc.scrollingElement,
-              parentDoc.documentElement,
-              parentDoc.body
-            ].filter(Boolean);
-            scrollTargets.forEach((target) => {
-              try {
-                target.scrollTo({ top: 0, behavior: 'smooth' });
-                target.scrollTop = 0;
-              } catch (error) {}
-            });
+            const latestTurn = parentDoc.getElementById('ask-data-latest-turn');
+            if (!latestTurn) return false;
             try {
-              window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+              latestTurn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              return true;
+            } catch (error) {
+              return false;
+            }
+          };
+          const retryScrollToLatestTurn = () => {
+            let scrollAttempts = 0;
+            const scrollIntervalId = setInterval(() => {
+              scrollAttempts += 1;
+              if (scrollToLatestTurn() || scrollAttempts >= 30) {
+                clearInterval(scrollIntervalId);
+              }
+            }, 120);
+          };
+          const scrollToAskDataTabOnly = () => {
+            const parentDoc = window.parent.document;
+            const askDataTab = Array.from(
+              parentDoc.querySelectorAll('button[role="tab"], [role="tab"], [data-baseweb="tab"]')
+            ).find((tab) => normalize(tab.textContent) === 'Ask Data');
+            if (!askDataTab) return;
+            try {
+              askDataTab.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (error) {}
           };
           const clickAskDataTab = () => {
@@ -481,6 +492,9 @@ def render_ask_data_focus_script() -> None:
               askDataTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
               askDataTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
               askDataTab.click();
+              try {
+                askDataTab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              } catch (error) {}
               return true;
             }
             return false;
@@ -491,7 +505,11 @@ def render_ask_data_focus_script() -> None:
             if (clickAskDataTab() || attempts >= 20) {
               clearInterval(intervalId);
               cleanLegacyTabQuery();
-              setTimeout(scrollToAskDataTop, 120);
+              if (__SHOULD_SCROLL_TOP__) {
+                setTimeout(retryScrollToLatestTurn, 120);
+              } else {
+                setTimeout(scrollToAskDataTabOnly, 120);
+              }
             }
           }, 150);
         </script>
@@ -1625,6 +1643,9 @@ overview_tab, profile_tab, library_tab, report_tab = st.tabs(
 render_ask_data_focus_script()
 
 with overview_tab:
+    if st.session_state.messages:
+        st.markdown('<div id="ask-data-latest-turn"></div>', unsafe_allow_html=True)
+
     for turn in reversed(conversation_turns(st.session_state.messages)):
         for message in turn:
             with st.chat_message(message["role"]):
