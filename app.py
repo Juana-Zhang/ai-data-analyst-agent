@@ -1819,31 +1819,37 @@ with report_tab:
         )
 
     st.subheader("Design Guardrails")
-    st.table(
-        pd.DataFrame(
-            [
-                {
-                    "Risk": "Free-form LLM-to-SQL",
-                    "Guardrail": "SQL execution is limited to approved workflows.",
-                },
-                {
-                    "Risk": "Unsupported fields or hallucinated logic",
-                    "Guardrail": "AI responses are grounded in available schema metadata and workflow coverage.",
-                },
-                {
-                    "Risk": "Unreviewed new analysis",
-                    "Guardrail": "New analyses can be proposed, but untrusted SQL is not automatically executed.",
-                },
-                {
-                    "Risk": "Black-box answers",
-                    "Guardrail": "Every completed analysis exposes SQL evidence, data context, limitations, and next steps.",
-                },
-                {
-                    "Risk": "Private data or key exposure",
-                    "Guardrail": "The public demo uses synthetic sample data; real data and API keys stay outside the repo.",
-                },
-            ]
-        )
+    guardrail_rows = [
+        ("Free-form LLM-to-SQL", "SQL execution is limited to approved workflows."),
+        ("Unsupported fields or hallucinated logic", "AI responses are grounded in schema metadata and workflow coverage."),
+        ("Unreviewed new analysis", "New analyses can be proposed, but untrusted SQL is not auto-executed."),
+        ("Black-box answers", "Completed analyses expose SQL evidence, data context, limitations, and next steps."),
+        ("Private data or key exposure", "The public demo uses synthetic data; real data and API keys stay outside the repo."),
+    ]
+    guardrail_body = "\n".join(
+        "<tr>"
+        f"<td>{html.escape(risk)}</td>"
+        f"<td>{html.escape(guardrail)}</td>"
+        "</tr>"
+        for risk, guardrail in guardrail_rows
+    )
+    st.markdown(
+        f"""
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 0.95rem;">
+            <thead>
+              <tr>
+                <th style="text-align: left; padding: 0.45rem 0.6rem; border: 1px solid rgba(49, 51, 63, 0.12); color: #808495;">Risk</th>
+                <th style="text-align: left; padding: 0.45rem 0.6rem; border: 1px solid rgba(49, 51, 63, 0.12); color: #808495;">Guardrail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {guardrail_body}
+            </tbody>
+          </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.subheader("What This Demonstrates")
